@@ -84,7 +84,7 @@ func (dbData PostgreDB) createAccountsTable(ctx context.Context) error {
 	return nil
 }
 
-func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.SimpleAccountData) (string, error) {
+func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.SimpleAccountData) (string, bool, error) {
 
 	checkStmt := "SELECT uuid FROM " + accountsTableName + " WHERE username=$1 AND password=$2"
 
@@ -93,11 +93,16 @@ func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.Simple
 	err := dbData.DatabaseConnection.QueryRowContext(ctx, checkStmt, accountData.Login, accountData.Password).Scan(&id)
 
 	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("No such login password pair: " + accountData.Login)
+			return "", false, nil
+
+		}
 		log.Printf("Error querying database: " + accountData.Login)
-		return "", err
+		return "", false, err
 	}
 
-	return id, nil
+	return id, true, nil
 }
 
 func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata model.Metadata, data string, dataSK string) error {

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"gophkeep/internal/model"
 	"log"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type Storage interface {
