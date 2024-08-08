@@ -39,7 +39,8 @@ func main() {
 	r.Use(logger.LoggingMiddleware)
 
 	r.Get(`/ping`, env.PingDBHandle)
-	r.Get(`/api/user/list`, env.ListHandle)
+	r.Get(`/api/user/sync`, env.SyncHandle)
+	r.Get("/api/read", env.ReadHandle)
 
 	r.Post("/api/user/register", env.RegisterHandle)
 	r.Post("/api/user/login", env.AuthHandle)

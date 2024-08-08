@@ -15,7 +15,7 @@ type Storage interface {
 	CheckLogin(context.Context, model.SimpleAccountData) (string, error)
 	AddLoginAndPasswordData(context.Context, model.Metadata, string, string) error
 	AddCardData(context.Context, model.Metadata, string, string) error
-	GetSimpleMetadataByUserID(context.Context, string) ([]model.SimpleMetadata, error)
+	GetMetadataByUserID(context.Context, string) ([]model.Metadata, error)
 	Delete(context.Context, model.DataToDelete) error
 	Edit(context.Context, model.EditData) error
 	Read(context.Context, model.DataToRead) (string, error)

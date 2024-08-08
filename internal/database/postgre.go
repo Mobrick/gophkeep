@@ -84,7 +84,7 @@ func (dbData PostgreDB) createAccountsTable(ctx context.Context) error {
 	return nil
 }
 
-func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.SimpleAccountData) (string, bool, error) {
+func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.SimpleAccountData) (string, error) {
 
 	checkStmt := "SELECT uuid FROM " + accountsTableName + " WHERE username=$1 AND password=$2"
 
@@ -95,14 +95,14 @@ func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.Simple
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("No such login password pair: " + accountData.Login)
-			return "", false, nil
+			return "", nil
 
 		}
 		log.Printf("Error querying database: " + accountData.Login)
-		return "", false, err
+		return "", err
 	}
 
-	return id, true, nil
+	return id, nil
 }
 
 func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata model.Metadata, data string, dataSK string) error {
@@ -114,8 +114,12 @@ func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata mo
 	if err != nil {
 		return err
 	}
+	tx, err := dbData.DatabaseConnection.Begin()
+	if err != nil {
+		return err
+	}
 
-	insertStmt := "INSERT INTO infos (static_id, dynamic_id, name, description, type, account_uuid, created_at, changed_at) VALUES $1, $2, $3, $4, $5, $6, $7, $8"
+	insertStmt := "INSERT INTO infos (static_id, dynamic_id, name, description, type, account_uuid, created_at, changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
 
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, insertStmt,
 		metadata.StaticID, metadata.DynamicID, metadata.Name, metadata.Description, metadata.DataType, metadata.UserID, metadata.Created, metadata.Changed)
@@ -124,9 +128,16 @@ func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata mo
 		return err
 	}
 
-	passwordInsertStmt := "INSERT INTO passwords (id, data, sk) VALUES $1, $2, $3"
+	passwordInsertStmt := "INSERT INTO passwords (id, data, sk) VALUES ($1, $2, $3)"
 
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, passwordInsertStmt, metadata.StaticID, data, dataSK)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -144,7 +155,12 @@ func (dbData PostgreDB) AddCardData(ctx context.Context, metadata model.Metadata
 		return err
 	}
 
-	insertStmt := "INSERT INTO infos (static_id, dynamic_id, name, description, type, account_uuid, created_at, changed_at) VALUES $1, $2, $3, $4, $5, $6, $7, $8"
+	tx, err := dbData.DatabaseConnection.Begin()
+	if err != nil {
+		return err
+	}
+
+	insertStmt := "INSERT INTO infos (static_id, dynamic_id, name, description, type, account_uuid, created_at, changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
 
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, insertStmt,
 		metadata.StaticID, metadata.DynamicID, metadata.Name, metadata.Description, metadata.DataType, metadata.UserID, metadata.Created, metadata.Changed)
@@ -153,9 +169,15 @@ func (dbData PostgreDB) AddCardData(ctx context.Context, metadata model.Metadata
 		return err
 	}
 
-	cardInsertStmt := "INSERT INTO cards (id, data, sk) VALUES $1, $2, $3"
+	cardInsertStmt := "INSERT INTO cards (id, data, sk) VALUES ($1, $2, $3)"
 
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, cardInsertStmt, metadata.StaticID, data, dataSK)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -183,7 +205,7 @@ func (dbData PostgreDB) createInfoTable(ctx context.Context) error {
 }
 
 func (dbData PostgreDB) createLoginAndPasswordTable(ctx context.Context) error {
-	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, passwordsmigrations.EmbedPasswords)
+	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, passwordsmigrations.EmbedPasswords, goose.WithAllowOutofOrder(true))
 	if err != nil {
 		return err
 	}
@@ -220,21 +242,39 @@ func (dbData PostgreDB) createCardTable(ctx context.Context) error {
 	return nil
 }
 
-func (dbData PostgreDB) GetSimpleMetadataByUserID(ctx context.Context, userID string) ([]model.SimpleMetadata, error) {
-	var metadata []model.SimpleMetadata
-	stmt := "SELECT name, description FROM infos WHERE user_id = $1"
+func (dbData PostgreDB) GetMetadataByUserID(ctx context.Context, userID string) ([]model.Metadata, error) {
+	metadata := make([]model.Metadata, 0)
+	exists, err := dbData.tableExists(ctx, "infos")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return metadata, nil
+	}
+
+	stmt := "SELECT static_id, dynamic_id, name, description, type, created_at, changed_at FROM infos WHERE account_uuid = $1"
 	rows, err := dbData.DatabaseConnection.QueryContext(ctx, stmt, userID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
-		var name, description string
-		err := rows.Scan(&name, &description)
+		var name, description, dataType, static_id, dynamic_id string
+		var created_at, changed_at time.Time
+		err := rows.Scan(&static_id, &dynamic_id, &name, &description, &dataType, &created_at, &changed_at)
 		if err != nil {
 			return nil, err
 		}
 
-		metadata = append(metadata, model.SimpleMetadata{Name: name, Description: description})
+		metadata = append(metadata, model.Metadata{
+			StaticID:    static_id,
+			DynamicID:   dynamic_id,
+			Name:        name,
+			Description: description,
+			DataType:    dataType,
+			UserID:      userID,
+			Created:     created_at,
+			Changed:     changed_at,
+		})
 	}
 
 	if err := rows.Err(); err != nil {
@@ -243,6 +283,22 @@ func (dbData PostgreDB) GetSimpleMetadataByUserID(ctx context.Context, userID st
 
 	defer rows.Close()
 	return metadata, nil
+}
+
+func (dbData PostgreDB) tableExists(ctx context.Context, tableName string) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS (
+		SELECT 1
+		FROM information_schema.tables
+		WHERE table_name = $1
+	);`
+
+	err := dbData.DatabaseConnection.QueryRowContext(ctx, query, tableName).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
 }
 
 func (dbData PostgreDB) Delete(ctx context.Context, deleteData model.DataToDelete) error {
@@ -255,7 +311,7 @@ func (dbData PostgreDB) Delete(ctx context.Context, deleteData model.DataToDelet
 		return errors.New("data is not accessible")
 	}
 
-	deleteFromInfosStmt := "DELETE FROM infos WHERE id = $1 AND user_id = $2"
+	deleteFromInfosStmt := "DELETE FROM infos WHERE static_id = $1 AND account_uuid = $2"
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, deleteFromInfosStmt, deleteData.StaticID, deleteData.UserID)
 
 	if err != nil {
@@ -264,7 +320,7 @@ func (dbData PostgreDB) Delete(ctx context.Context, deleteData model.DataToDelet
 
 	dataType := deleteData.DataType
 
-	deleteFromDataStmt := "DELETE FROM " + dataType + " WHERE id = $1"
+	deleteFromDataStmt := "DELETE FROM " + dataType + " WHERE static_id = $1"
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, deleteFromDataStmt, deleteData.StaticID)
 	if err != nil {
 		return err
@@ -296,7 +352,7 @@ func (dbData PostgreDB) Edit(ctx context.Context, editData model.EditData) error
 		return errors.New("data is not accessible")
 	}
 
-	stmt := "UPDATE infos SET dynamic_id = $1, description = $2, changed_at = $3 WHERE id = $4 AND user_id = $5"
+	stmt := "UPDATE infos SET dynamic_id = $1, description = $2, changed_at = $3 WHERE static_id = $4 AND account_uuid = $5"
 
 	dynamicID := uuid.New().String()
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, stmt, dynamicID, editData.Description, time.Now(), editData.StaticID, editData.UserID)

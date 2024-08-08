@@ -42,6 +42,7 @@ type CardData struct {
 type SimpleMetadata struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	DataType    string `json:"data_type"`
 }
 
 type DataToDelete struct {

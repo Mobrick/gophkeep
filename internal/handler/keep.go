@@ -39,22 +39,24 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// создаем и шифруем этот ключ ключом шифрования
-	dataSK, err := encryption.GenerateSK(uuid.NewString())
+	encryptedSK, realSK, err := encryption.GenerateSK(uuid.NewString())
 	if err != nil {
 		logger.Log.Info("could not create key")
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	var metadata model.Metadata
+
 	switch initialData.DataType {
 	case "passwords":
-		err = loginAndPasswordKeep(ctx, initialData, userID, env, dataSK)
+		metadata, err = loginAndPasswordKeep(ctx, initialData, userID, env, realSK, encryptedSK)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusBadRequest)
 			return
 		}
 	case "cards":
-		err = cardKeep(ctx, initialData, userID, env, dataSK)
+		metadata, err = cardKeep(ctx, initialData, userID, env, realSK)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusBadRequest)
 			return
@@ -63,10 +65,21 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 	case "texts":
 	}
 
+	resp, err := json.Marshal(metadata)
+	if err != nil {
+		logger.Log.Debug("could not marshal response")
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte(resp))
+
 	res.WriteHeader(http.StatusOK)
 }
 
-func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, dataSK string) error {
+func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string) (model.Metadata, error) {
 	metadata := model.Metadata{
 		Name:        initialData.Name,
 		Description: initialData.Description,
@@ -78,19 +91,19 @@ func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, us
 		UserID:      userID,
 	}
 
-	encryptedData, err := encryption.EncryptSimpleData(dataSK, initialData.Data)
+	encryptedData, err := encryption.EncryptSimpleData(realSK, initialData.Data)
 	if err != nil {
-		return err
+		return metadata, err
 	}
 
-	err = env.Storage.AddLoginAndPasswordData(ctx, metadata, encryptedData, dataSK)
+	err = env.Storage.AddLoginAndPasswordData(ctx, metadata, encryptedData, encryptedSK)
 	if err != nil {
-		return err
+		return metadata, err
 	}
-	return nil
+	return metadata, err
 }
 
-func cardKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, dataSK string) error {
+func cardKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, dataSK string) (model.Metadata, error) {
 	metadata := model.Metadata{
 		Name:        initialData.Name,
 		Description: initialData.Description,
@@ -104,12 +117,12 @@ func cardKeep(ctx context.Context, initialData model.InitialData, userID string,
 
 	encryptedData, err := encryption.EncryptSimpleData(dataSK, initialData.Data)
 	if err != nil {
-		return err
+		return metadata, err
 	}
 
 	err = env.Storage.AddCardData(ctx, metadata, encryptedData, dataSK)
 	if err != nil {
-		return err
+		return metadata, err
 	}
-	return nil
+	return metadata, err
 }
