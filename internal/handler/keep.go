@@ -75,8 +75,6 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(resp))
-
-	res.WriteHeader(http.StatusOK)
 }
 
 func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string) (model.Metadata, error) {

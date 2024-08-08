@@ -17,7 +17,7 @@ type Storage interface {
 	AddCardData(context.Context, model.Metadata, string, string) error
 	GetMetadataByUserID(context.Context, string) ([]model.Metadata, error)
 	Delete(context.Context, model.DataToDelete) error
-	Edit(context.Context, model.EditData) error
+	Edit(context.Context, model.EditData, string, string) error
 	Read(context.Context, model.DataToRead) (string, error)
 	// TODO добавление произвольных данных
 	Close()

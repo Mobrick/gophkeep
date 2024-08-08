@@ -342,7 +342,7 @@ func (dbData PostgreDB) Read(ctx context.Context, readData model.DataToRead) (st
 	return decryptedData, nil
 }
 
-func (dbData PostgreDB) Edit(ctx context.Context, editData model.EditData) error {
+func (dbData PostgreDB) Edit(ctx context.Context, editData model.EditData, data string, sk string) error {
 	decryptedData, err := dataAccess(ctx, dbData, editData.StaticID, editData.DataType)
 	if err != nil {
 		return err
@@ -363,8 +363,8 @@ func (dbData PostgreDB) Edit(ctx context.Context, editData model.EditData) error
 
 	dataType := editData.DataType
 
-	secondStmt := "UPDATE " + dataType + " SET data = $1 WHERE id = $2"
-	_, err = dbData.DatabaseConnection.ExecContext(ctx, secondStmt, editData.Data, editData.StaticID)
+	secondStmt := "UPDATE " + dataType + " SET (data, sk) = ($1, $2) WHERE id = $3"
+	_, err = dbData.DatabaseConnection.ExecContext(ctx, secondStmt, data, sk, editData.StaticID)
 	if err != nil {
 		return err
 	}
