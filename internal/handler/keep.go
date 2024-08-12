@@ -2,14 +2,12 @@ package handler
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"gophkeep/internal/auth"
 	"gophkeep/internal/encryption"
 	"gophkeep/internal/logger"
 	"gophkeep/internal/model"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -48,21 +46,10 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 
 	var metadata model.Metadata
 
-	switch initialData.DataType {
-	case "passwords":
-		metadata, err = loginAndPasswordKeep(ctx, initialData, userID, env, realSK, encryptedSK)
-		if err != nil {
-			http.Error(res, err.Error(), http.StatusBadRequest)
-			return
-		}
-	case "cards":
-		metadata, err = cardKeep(ctx, initialData, userID, env, realSK, encryptedSK)
-		if err != nil {
-			http.Error(res, err.Error(), http.StatusBadRequest)
-			return
-		}
-	case "binaries":
-	case "texts":
+	metadata, err = StorageData(ctx, initialData, userID, env, realSK, encryptedSK, initialData.Data)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	resp, err := json.Marshal(metadata)
@@ -75,52 +62,4 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(resp))
-}
-
-func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string) (model.Metadata, error) {
-	metadata := model.Metadata{
-		Name:        initialData.Name,
-		Description: initialData.Description,
-		DataType:    initialData.DataType,
-		Created:     time.Now(),
-		Changed:     time.Now(),
-		StaticID:    uuid.New().String(),
-		DynamicID:   uuid.New().String(),
-		UserID:      userID,
-	}
-
-	encryptedData, err := encryption.EncryptSimpleData(realSK, initialData.Data)
-	if err != nil {
-		return metadata, err
-	}
-
-	err = env.Storage.AddLoginAndPasswordData(ctx, metadata, encryptedData, encryptedSK)
-	if err != nil {
-		return metadata, err
-	}
-	return metadata, err
-}
-
-func cardKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string) (model.Metadata, error) {
-	metadata := model.Metadata{
-		Name:        initialData.Name,
-		Description: initialData.Description,
-		DataType:    initialData.DataType,
-		Created:     time.Now(),
-		Changed:     time.Now(),
-		StaticID:    uuid.New().String(),
-		DynamicID:   uuid.New().String(),
-		UserID:      userID,
-	}
-
-	encryptedData, err := encryption.EncryptSimpleData(realSK, initialData.Data)
-	if err != nil {
-		return metadata, err
-	}
-
-	err = env.Storage.AddCardData(ctx, metadata, encryptedData, encryptedSK)
-	if err != nil {
-		return metadata, err
-	}
-	return metadata, err
 }

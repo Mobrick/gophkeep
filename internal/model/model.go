@@ -39,6 +39,12 @@ type CardData struct {
 	Code           string `json:"code"`
 }
 
+type FileData struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	Data string `json:"data"`
+}
+
 type SimpleMetadata struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`

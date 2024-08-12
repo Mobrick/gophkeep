@@ -12,6 +12,7 @@ import (
 
 	accountsmigrations "gophkeep/internal/database/accounts_migrations"
 	cardsmigrations "gophkeep/internal/database/cards_migrations"
+	filesmigrations "gophkeep/internal/database/files_migrations"
 	infosmigrations "gophkeep/internal/database/infos_migrations"
 	passwordsmigrations "gophkeep/internal/database/passwords_migrations"
 
@@ -39,18 +40,12 @@ func (dbData PostgreDB) Close() {
 
 // Возвращает true если такой логин уже хранится в базе
 func (dbData PostgreDB) AddNewAccount(ctx context.Context, accountData model.SimpleAccountData) (bool, string, error) {
-
-	err := dbData.createAccountsTable(ctx)
-	if err != nil {
-		return false, "", err
-	}
-
 	id := uuid.New().String()
 
 	insertStmt := "INSERT INTO " + accountsTableName + " (uuid, username, password)" +
 		" VALUES ($1, $2, $3)"
 
-	_, err = dbData.DatabaseConnection.ExecContext(ctx, insertStmt, id, accountData.Login, accountData.Password)
+	_, err := dbData.DatabaseConnection.ExecContext(ctx, insertStmt, id, accountData.Login, accountData.Password)
 
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -63,25 +58,6 @@ func (dbData PostgreDB) AddNewAccount(ctx context.Context, accountData model.Sim
 	}
 
 	return false, id, nil
-}
-
-func (dbData PostgreDB) createAccountsTable(ctx context.Context) error {
-	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, accountsmigrations.EmbedAccounts)
-	if err != nil {
-		return err
-	}
-
-	results, err := provider.Up(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, r := range results {
-		log.Printf("%-3s %-2v done: %v\n", r.Source.Type, r.Source.Version, r.Duration)
-	}
-
-	logger.Log.Debug("Created table with goose embed")
-	return nil
 }
 
 func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.SimpleAccountData) (string, error) {
@@ -105,15 +81,7 @@ func (dbData PostgreDB) CheckLogin(ctx context.Context, accountData model.Simple
 	return id, nil
 }
 
-func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata model.Metadata, data string, dataSK string) error {
-	err := dbData.createInfoTable(ctx)
-	if err != nil {
-		return err
-	}
-	err = dbData.createLoginAndPasswordTable(ctx)
-	if err != nil {
-		return err
-	}
+func (dbData PostgreDB) AddData(ctx context.Context, metadata model.Metadata, data string, dataSK string, dataType string) error {
 	tx, err := dbData.DatabaseConnection.Begin()
 	if err != nil {
 		return err
@@ -128,48 +96,7 @@ func (dbData PostgreDB) AddLoginAndPasswordData(ctx context.Context, metadata mo
 		return err
 	}
 
-	passwordInsertStmt := "INSERT INTO passwords (id, data, sk) VALUES ($1, $2, $3)"
-
-	_, err = dbData.DatabaseConnection.ExecContext(ctx, passwordInsertStmt, metadata.StaticID, data, dataSK)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback()
-
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (dbData PostgreDB) AddCardData(ctx context.Context, metadata model.Metadata, data string, dataSK string) error {
-	err := dbData.createInfoTable(ctx)
-	if err != nil {
-		return err
-	}
-	err = dbData.createCardTable(ctx)
-	if err != nil {
-		return err
-	}
-
-	tx, err := dbData.DatabaseConnection.Begin()
-	if err != nil {
-		return err
-	}
-
-	insertStmt := "INSERT INTO infos (static_id, dynamic_id, name, description, type, account_uuid, created_at, changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
-
-	_, err = dbData.DatabaseConnection.ExecContext(ctx, insertStmt,
-		metadata.StaticID, metadata.DynamicID, metadata.Name, metadata.Description, metadata.DataType, metadata.UserID, metadata.Created, metadata.Changed)
-
-	if err != nil {
-		return err
-	}
-
-	cardInsertStmt := "INSERT INTO cards (id, data, sk) VALUES ($1, $2, $3)"
+	cardInsertStmt := "INSERT INTO " + dataType + " (id, data, sk) VALUES ($1, $2, $3)"
 
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, cardInsertStmt, metadata.StaticID, data, dataSK)
 	if err != nil {
@@ -185,7 +112,7 @@ func (dbData PostgreDB) AddCardData(ctx context.Context, metadata model.Metadata
 	return nil
 }
 
-func (dbData PostgreDB) createInfoTable(ctx context.Context) error {
+func (dbData PostgreDB) CreateInfoTable(ctx context.Context) error {
 	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, infosmigrations.EmbedInfos)
 	if err != nil {
 		return err
@@ -204,7 +131,7 @@ func (dbData PostgreDB) createInfoTable(ctx context.Context) error {
 	return nil
 }
 
-func (dbData PostgreDB) createLoginAndPasswordTable(ctx context.Context) error {
+func (dbData PostgreDB) CreateLoginAndPasswordTable(ctx context.Context) error {
 	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, passwordsmigrations.EmbedPasswords, goose.WithAllowOutofOrder(true))
 	if err != nil {
 		return err
@@ -223,8 +150,46 @@ func (dbData PostgreDB) createLoginAndPasswordTable(ctx context.Context) error {
 	return nil
 }
 
-func (dbData PostgreDB) createCardTable(ctx context.Context) error {
+func (dbData PostgreDB) CreateCardTable(ctx context.Context) error {
 	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, cardsmigrations.EmbedCards)
+	if err != nil {
+		return err
+	}
+
+	results, err := provider.Up(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range results {
+		log.Printf("%-3s %-2v done: %v\n", r.Source.Type, r.Source.Version, r.Duration)
+	}
+
+	logger.Log.Debug("Created table with goose embed")
+	return nil
+}
+
+func (dbData PostgreDB) CreateFileTable(ctx context.Context) error {
+	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, filesmigrations.EmbedFiles)
+	if err != nil {
+		return err
+	}
+
+	results, err := provider.Up(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range results {
+		log.Printf("%-3s %-2v done: %v\n", r.Source.Type, r.Source.Version, r.Duration)
+	}
+
+	logger.Log.Debug("Created table with goose embed")
+	return nil
+}
+
+func (dbData PostgreDB) CreateAccountsTable(ctx context.Context) error {
+	provider, err := goose.NewProvider(database.DialectPostgres, dbData.DatabaseConnection, accountsmigrations.EmbedAccounts)
 	if err != nil {
 		return err
 	}

@@ -28,9 +28,11 @@ func main() {
 
 	cfg := config.MakeConfig()
 
+	ctx := context.Background()
+
 	env := &handler.Env{
 		ConfigStruct: cfg,
-		Storage:      database.NewDB(cfg.FlagDBConnectionAddress),
+		Storage:      database.NewDB(ctx, cfg.FlagDBConnectionAddress),
 	}
 
 	defer env.Storage.Close()
@@ -41,6 +43,7 @@ func main() {
 	r.Get(`/ping`, env.PingDBHandle)
 	r.Get(`/api/user/sync`, env.SyncHandle)
 	r.Get("/api/read", env.ReadHandle)
+	r.Get("/api/readfile", env.ReadFileHandle)
 
 	r.Post("/api/user/register", env.RegisterHandle)
 	r.Post("/api/user/login", env.AuthHandle)

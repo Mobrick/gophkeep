@@ -952,6 +952,41 @@ func readHandle(m model) stageCompleteMsg {
 	return msg
 }
 
+func readFileHandle(m model) stageCompleteMsg {
+	var msg stageCompleteMsg
+
+	var metadataToRead gophmodel.Metadata
+
+	for _, metadata := range *m.userMetadata {
+		if metadata.Name == *m.targetObjectName {
+			metadataToRead = metadata
+		}
+	}
+
+	if metadataToRead == (gophmodel.Metadata{}) {
+		msg.ErrorMessage = "no such name"
+		msg.NextStageNameKey = "MainMenu"
+	}
+
+	status, data, err := m.clientEnv.ReadHandle(metadataToRead)
+	if err != nil {
+		msg.ErrorMessage = err.Error()
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+	if status != 200 {
+		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+	msg.ErrorMessage = ""
+	msg.NextStageNameKey = "ReadComplete"
+	
+	*m.outputData = string(data)
+
+	return msg
+}
+
 func deleteHandle(m model) stageCompleteMsg {
 	var msg stageCompleteMsg
 
