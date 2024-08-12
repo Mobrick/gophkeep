@@ -56,7 +56,7 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 	case "cards":
-		metadata, err = cardKeep(ctx, initialData, userID, env, realSK)
+		metadata, err = cardKeep(ctx, initialData, userID, env, realSK, encryptedSK)
 		if err != nil {
 			http.Error(res, err.Error(), http.StatusBadRequest)
 			return
@@ -101,7 +101,7 @@ func loginAndPasswordKeep(ctx context.Context, initialData model.InitialData, us
 	return metadata, err
 }
 
-func cardKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, dataSK string) (model.Metadata, error) {
+func cardKeep(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string) (model.Metadata, error) {
 	metadata := model.Metadata{
 		Name:        initialData.Name,
 		Description: initialData.Description,
@@ -113,12 +113,12 @@ func cardKeep(ctx context.Context, initialData model.InitialData, userID string,
 		UserID:      userID,
 	}
 
-	encryptedData, err := encryption.EncryptSimpleData(dataSK, initialData.Data)
+	encryptedData, err := encryption.EncryptSimpleData(realSK, initialData.Data)
 	if err != nil {
 		return metadata, err
 	}
 
-	err = env.Storage.AddCardData(ctx, metadata, encryptedData, dataSK)
+	err = env.Storage.AddCardData(ctx, metadata, encryptedData, encryptedSK)
 	if err != nil {
 		return metadata, err
 	}

@@ -39,15 +39,15 @@ func (env Env) EditHandle(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	encryptedData, err := encryption.EncryptSimpleData(realSK, editData.Data)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	if err = json.Unmarshal(buf.Bytes(), &editData); err != nil {
 		logger.Log.Info("could not unmarshal initial data")
 		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	encryptedData, err := encryption.EncryptSimpleData(realSK, editData.Data)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -59,7 +59,7 @@ func (env Env) EditHandle(res http.ResponseWriter, req *http.Request) {
 	err = env.Storage.Edit(ctx, editData, encryptedData, encryptedSK)
 
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

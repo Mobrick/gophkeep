@@ -193,8 +193,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch msg.String() {
 			case "enter":
-				m.currentStage = "WriteDescription"
 				m.newMetadata.Name = m.textInput.Value()
+				if nameAlreadyExists(m, m.newMetadata.Name) {
+					m.errorMessage = "you already use that data name"
+					m.currentStage = "MainMenu"
+				} else {
+					m.currentStage = "WriteDescription"
+				}
 				m.textInput.SetValue("")
 				return m, cmd
 			}
@@ -226,9 +231,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.newMetadata.DataType = "passwords"
 				return m, cmd
 			case "2":
-				m.currentStage = "WriteCardData"
+				m.currentStage = "WriteNumber"
 				m.newMetadata.DataType = "cards"
 				return m, cmd
+				/* default:
+				m.currentStage = "MainMenu"
+				m.errorMessage = "wrong selected type"
+				return m, cmd*/
 			}
 		}
 	case "WriteLogin":
@@ -257,13 +266,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch msg.String() {
 			case "enter":
-				m.currentStage = "WriteLoginAndPasswordToServer"
+				m.currentStage = "WriteToServer"
 				m.loginAndPasswordData.Password = m.textInput.Value()
 				m.textInput.SetValue("")
 				return m, cmd
 			}
 		}
-	case "WriteLoginAndPasswordToServer":
+
+	case "WriteNumber":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "WriteCardholderName"
+				m.cardData.CardNumber = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "WriteCardholderName":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "WriteExpirationDate"
+				m.cardData.CardholderName = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "WriteExpirationDate":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "WriteCode"
+				m.cardData.ExpiredAt = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "WriteCode":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "WriteToServer"
+				m.cardData.Code = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "WriteToServer":
 		msg := handleWrite(m)
 		m.currentStage = msg.NextStageNameKey
 		m.errorMessage = msg.ErrorMessage
@@ -290,6 +364,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch m.targetObjectMetadata.DataType {
 				case "passwords":
 					m.currentStage = "EditLogin"
+					m.newMetadata.Description = m.textInput.Value()
+					m.textInput.SetValue("")
+				case "cards":
+					m.currentStage = "EditNumber"
 					m.newMetadata.Description = m.textInput.Value()
 					m.textInput.SetValue("")
 				}
@@ -323,13 +401,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch msg.String() {
 			case "enter":
-				m.currentStage = "EditedLoginAndPasswordToServer"
+				m.currentStage = "EditToServer"
 				m.loginAndPasswordData.Password = m.textInput.Value()
 				m.textInput.SetValue("")
 				return m, cmd
 			}
 		}
-	case "EditedLoginAndPasswordToServer":
+
+	case "EditNumber":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "EditCardholderName"
+				m.cardData.CardNumber = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "EditCardholderName":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "EditExpirationDate"
+				m.cardData.CardholderName = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "EditExpirationDate":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "EditCode"
+				m.cardData.ExpiredAt = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "EditCode":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "EditToServer"
+				m.cardData.Code = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "EditToServer":
 		msg := handleEdit(m)
 		m.currentStage = msg.NextStageNameKey
 		m.errorMessage = msg.ErrorMessage
@@ -352,6 +495,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errorMessage = msg.ErrorMessage
 		return m, cmd
 	case "ReadComplete":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "MainMenu"
+				return m, cmd
+			}
+		}
+	case "Delete":
+		msg := deleteHandle(m)
+		m.currentStage = msg.NextStageNameKey
+		m.errorMessage = msg.ErrorMessage
+		return m, cmd
+	case "DeleteComplete":
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
@@ -425,12 +582,12 @@ func (m model) View() string {
 		) + "\n"
 	case "SelectDataType":
 		s = "press '1' to add login and password data or press '2' to add card data"
-	case "WriteLogin":
+	case "WriteLogin", "EditLogin":
 		return fmt.Sprintf(
 			"Input login: \n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
-	case "WritePassword":
+	case "WritePassword", "EditPassword":
 		m.textInput.Placeholder = "Password"
 		m.textInput.EchoMode = textinput.EchoPassword
 		m.textInput.EchoCharacter = '*'
@@ -438,20 +595,27 @@ func (m model) View() string {
 			"Input password: \n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
-	case "EditLogin":
+	case "WriteNumber", "EditNumber":
 		return fmt.Sprintf(
-			"Input login: \n\n%s\n\n",
+			"Input number: \n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
-	case "EditPassword":
-		m.textInput.Placeholder = "Password"
-		m.textInput.EchoMode = textinput.EchoPassword
-		m.textInput.EchoCharacter = '*'
+	case "WriteCardholderName", "EditCardholderName":
 		return fmt.Sprintf(
-			"Input password: \n\n%s\n\n",
+			"Input cardholder name: \n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
-	case "EditedLoginAndPasswordToServer":
+	case "WriteExpirationDate", "EditExpirationDate":
+		return fmt.Sprintf(
+			"Input expiration date: \n\n%s\n\n",
+			m.textInput.View(),
+		) + "\n"
+	case "WriteCode", "EditCode":
+		return fmt.Sprintf(
+			"Input code: \n\n%s\n\n",
+			m.textInput.View(),
+		) + "\n"
+	case "EditToServer":
 		s = "writing to server"
 	case "DataSaved":
 		s = "Data added"
@@ -464,6 +628,10 @@ func (m model) View() string {
 			"Your data: \n\n%s\n\n ",
 			*m.outputData,
 		) + "\n"
+	case "Delete":
+		s = "Deletion"
+	case "DeleteComplete":
+		s = "Data deleted"
 	}
 
 	return "\n" + s + "\n\n"
@@ -677,6 +845,15 @@ func getMetadataByName(m model) (gophmodel.Metadata, int) {
 	return metadataToEdit, metadataIndex
 }
 
+func nameAlreadyExists(m model, name string) bool {
+	for _, metadata := range *m.userMetadata {
+		if metadata.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func handleEdit(m model) stageCompleteMsg {
 	var msg stageCompleteMsg
 
@@ -771,6 +948,47 @@ func readHandle(m model) stageCompleteMsg {
 	msg.ErrorMessage = ""
 	msg.NextStageNameKey = "ReadComplete"
 	*m.outputData = string(data)
+
+	return msg
+}
+
+func deleteHandle(m model) stageCompleteMsg {
+	var msg stageCompleteMsg
+
+	var metadataToDelete gophmodel.Metadata
+
+	deleteIndex := -1
+
+	for i, metadata := range *m.userMetadata {
+		if metadata.Name == *m.targetObjectName {
+			metadataToDelete = metadata
+			deleteIndex = i
+		}
+	}
+
+	if deleteIndex == -1 || metadataToDelete == (gophmodel.Metadata{}) {
+		msg.ErrorMessage = "no such name"
+		msg.NextStageNameKey = "MainMenu"
+	}
+
+	status, err := m.clientEnv.DeleteHandle(metadataToDelete)
+	if err != nil {
+		msg.ErrorMessage = err.Error()
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+	if status != 200 {
+		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+
+	if status == 200 {
+		msg.ErrorMessage = ""
+		msg.NextStageNameKey = "DeleteComplete"
+		(*m.userMetadata) = append((*m.userMetadata)[:deleteIndex], (*m.userMetadata)[deleteIndex+1:]...)
+		return msg
+	}
 
 	return msg
 }

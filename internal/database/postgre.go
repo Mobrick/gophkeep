@@ -311,6 +311,11 @@ func (dbData PostgreDB) Delete(ctx context.Context, deleteData model.DataToDelet
 		return errors.New("data is not accessible")
 	}
 
+	tx, err := dbData.DatabaseConnection.Begin()
+	if err != nil {
+		return err
+	}
+
 	deleteFromInfosStmt := "DELETE FROM infos WHERE static_id = $1 AND account_uuid = $2"
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, deleteFromInfosStmt, deleteData.StaticID, deleteData.UserID)
 
@@ -320,8 +325,14 @@ func (dbData PostgreDB) Delete(ctx context.Context, deleteData model.DataToDelet
 
 	dataType := deleteData.DataType
 
-	deleteFromDataStmt := "DELETE FROM " + dataType + " WHERE static_id = $1"
+	deleteFromDataStmt := "DELETE FROM " + dataType + " WHERE id = $1"
 	_, err = dbData.DatabaseConnection.ExecContext(ctx, deleteFromDataStmt, deleteData.StaticID)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	err = tx.Commit()
 	if err != nil {
 		return err
 	}

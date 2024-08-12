@@ -70,3 +70,8 @@ type EditData struct {
 	StaticID    string `json:"static_id"`
 	UserID      string `json:"user_id"`
 }
+
+type TestFileData struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}

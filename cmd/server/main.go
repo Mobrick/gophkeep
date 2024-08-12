@@ -44,6 +44,7 @@ func main() {
 
 	r.Post("/api/user/register", env.RegisterHandle)
 	r.Post("/api/user/login", env.AuthHandle)
+	r.Post("/api/keepfile", env.KeepFileHandle)
 	r.Post("/api/keep", env.KeepHandle)
 	r.Post("/api/delete", env.DeleteHandle)
 	r.Post("/api/edit", env.EditHandle)
