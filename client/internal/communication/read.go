@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	gophmodel "gophkeep/internal/model"
 	"net/http"
 	"time"
@@ -23,6 +24,7 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 
 	body, err := json.Marshal(dataInfo)
 	if err != nil {
+		err = fmt.Errorf("error: %s with data: %s %s %s", err, dataInfo.StaticID, dataInfo.UserID, dataInfo.DataType)
 		return 0, nil, err
 	}
 
@@ -50,9 +52,13 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 		return 0, nil, err
 	}
 
-	data := buf.Bytes()
+	var readData gophmodel.ReadResponse
+
+	if err = json.Unmarshal(buf.Bytes(), &readData); err != nil {
+		return 0, nil, err
+	}
 
 	defer response.Body.Close()
 
-	return response.StatusCode, data, nil
+	return response.StatusCode, []byte(readData.Data), nil
 }

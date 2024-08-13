@@ -6,38 +6,81 @@ import (
 	"encoding/json"
 	"gophkeep/internal/logger"
 	gophmodel "gophkeep/internal/model"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"time"
 )
 
-func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
+func (env *ClientEnv) WriteFileHandle(metadata gophmodel.SimpleMetadata, filePath []byte) (int, gophmodel.Metadata, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*100)
 	defer cancel()
 	requestURL := "http://localhost:8080"
-	requestPath := "/api/keep"
+	requestPath := "/api/keepfile"
 
 	initialData := gophmodel.InitialData{
 		Name:        metadata.Name,
 		Description: metadata.Description,
 		DataType:    metadata.DataType,
-		Data:        string(data),
+	}
+
+	s := string(filePath)
+
+	if len(s) > 0 && s[0] == '"' {
+		s = s[1:]
+	}
+	if len(s) > 0 && s[len(s)-1] == '"' {
+		s = s[:len(s)-1]
 	}
 
 	var fullMetadata gophmodel.Metadata
 
-	body, err := json.Marshal(initialData)
+	bodyInfo, err := json.Marshal(initialData)
 	if err != nil {
 		return 0, fullMetadata, err
 	}
 
-	req, err := http.NewRequest("POST", requestURL+requestPath, bytes.NewBuffer(body))
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+
+	metaPart, err := writer.CreateFormField("metadata")
+	if err != nil {
+		return 0, fullMetadata, err
+	}
+
+	metaPart.Write(bodyInfo)
+
+	part, err := writer.CreateFormFile("file", s)
+	if err != nil {
+		return 0, fullMetadata, err
+	}
+
+	file, err := os.Open(s)
+	if err != nil {
+		return 0, fullMetadata, err
+	}
+
+	defer file.Close()
+
+	_, err = io.Copy(part, file)
+	if err != nil {
+		return 0, fullMetadata, err
+	}
+
+	err = writer.Close()
+	if err != nil {
+		return 0, fullMetadata, err
+	}
+
+	req, err := http.NewRequest("POST", requestURL+requestPath, buf)
 	if err != nil {
 		return 0, fullMetadata, err
 	}
 	req = req.WithContext(ctx)
 	req.AddCookie(env.authCookie)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	client := &http.Client{}
 	response, err := client.Do(req)
@@ -45,6 +88,7 @@ func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte
 		return 0, fullMetadata, err
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode == 200 {
 		var buf bytes.Buffer
 

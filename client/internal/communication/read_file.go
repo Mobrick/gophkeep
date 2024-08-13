@@ -7,6 +7,7 @@ import (
 	gophmodel "gophkeep/internal/model"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -60,14 +61,30 @@ func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, e
 
 	filePath := "/tmp/" + fileData.Name
 
-	f, err := os.Create(filePath)
+	err = os.MkdirAll(filepath.Dir(filePath), os.ModePerm)
 	if err != nil {
 		return 0, "", err
 	}
 
-	_, err = f.Write([]byte(fileData.Data))
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return 0, "", err
 	}
+
+	_, err = file.Write([]byte(fileData.Data))
+	if err != nil {
+		return 0, "", err
+	}
+
+	err = file.Close()
+	if err != nil {
+		return 0, "", err
+	}
+
+	path, err := os.Getwd()
+	if err != nil {
+		return 0, "", err
+	}
+	filePath = filepath.Join(path, filePath)
 	return response.StatusCode, filePath, err
 }

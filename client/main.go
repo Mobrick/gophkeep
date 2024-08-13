@@ -32,6 +32,7 @@ type model struct {
 	newMetadata          gophmodel.SimpleMetadata
 	loginAndPasswordData *gophmodel.LoginAndPasswordData
 	cardData             *gophmodel.CardData
+	filePath             *string
 }
 
 type tickMsg time.Time
@@ -40,10 +41,11 @@ func initialModel() model {
 	ti := textinput.New()
 	ti.Focus()
 	ti.CharLimit = 255
-	ti.Width = 20
+	ti.Width = 255
 
 	objectName := ""
 	outputData := ""
+	path := ""
 
 	return model{
 		textInput:            ti,
@@ -54,6 +56,7 @@ func initialModel() model {
 		outputData:           &outputData,
 		loginAndPasswordData: &gophmodel.LoginAndPasswordData{},
 		cardData:             &gophmodel.CardData{},
+		filePath:             &path,
 	}
 }
 
@@ -234,10 +237,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentStage = "WriteNumber"
 				m.newMetadata.DataType = "cards"
 				return m, cmd
+			case "3":
+				m.currentStage = "WriteFile"
+				m.newMetadata.DataType = "files"
+				return m, cmd
 				/* default:
 				m.currentStage = "MainMenu"
 				m.errorMessage = "wrong selected type"
 				return m, cmd*/
+			}
+		}
+	case "WriteFile":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "WriteFileToServer"
+				*m.filePath = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
+			}
+		}
+	case "EditFile":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.Type {
+			case tea.KeyRunes, tea.KeyBackspace:
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "EditFileToServer"
+				*m.filePath = m.textInput.Value()
+				m.textInput.SetValue("")
+				return m, cmd
 			}
 		}
 	case "WriteLogin":
@@ -337,6 +376,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+	case "WriteFileToServer":
+		msg := handleWriteFile(m)
+		m.currentStage = msg.NextStageNameKey
+		m.errorMessage = msg.ErrorMessage
+		return m, cmd
+	case "EditFileToServer":
+		msg := handleEditFile(m)
+		m.currentStage = msg.NextStageNameKey
+		m.errorMessage = msg.ErrorMessage
+		return m, cmd
 	case "WriteToServer":
 		msg := handleWrite(m)
 		m.currentStage = msg.NextStageNameKey
@@ -368,6 +417,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textInput.SetValue("")
 				case "cards":
 					m.currentStage = "EditNumber"
+					m.newMetadata.Description = m.textInput.Value()
+					m.textInput.SetValue("")
+				case "files":
+					m.currentStage = "EditFile"
 					m.newMetadata.Description = m.textInput.Value()
 					m.textInput.SetValue("")
 				}
@@ -503,6 +556,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+	case "ReadFileComplete":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "enter":
+				m.currentStage = "MainMenu"
+				return m, cmd
+			}
+		}
 	case "Delete":
 		msg := deleteHandle(m)
 		m.currentStage = msg.NextStageNameKey
@@ -538,7 +600,7 @@ func (m model) View() string {
 
 	case "LoginRegisterInputs":
 		return fmt.Sprintf(
-			"Input your login: \n\n%s\n\n",
+			"Input your login:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "PasswordInput":
@@ -565,26 +627,26 @@ func (m model) View() string {
 	case "WriteName":
 		m.textInput.Placeholder = "Name"
 		return fmt.Sprintf(
-			"Input name of the data: \n\n%s\n\n",
+			"Input name of the data:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "WriteDescription":
 		m.textInput.Placeholder = "Description"
 		return fmt.Sprintf(
-			"Input description of the data: \n\n%s\n\n",
+			"Input description of the data:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "EditDescription":
 		m.textInput.Placeholder = "Description"
 		return fmt.Sprintf(
-			"Input new description of the data: \n\n%s\n\n",
+			"Input new description of the data:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "SelectDataType":
-		s = "press '1' to add login and password data or press '2' to add card data"
+		s = "press '1' to add login and password data or press '2' to add card data or '3' to add file"
 	case "WriteLogin", "EditLogin":
 		return fmt.Sprintf(
-			"Input login: \n\n%s\n\n",
+			"Input login:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "WritePassword", "EditPassword":
@@ -592,7 +654,7 @@ func (m model) View() string {
 		m.textInput.EchoMode = textinput.EchoPassword
 		m.textInput.EchoCharacter = '*'
 		return fmt.Sprintf(
-			"Input password: \n\n%s\n\n",
+			"Input password:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "WriteNumber", "EditNumber":
@@ -602,17 +664,23 @@ func (m model) View() string {
 		) + "\n"
 	case "WriteCardholderName", "EditCardholderName":
 		return fmt.Sprintf(
-			"Input cardholder name: \n\n%s\n\n",
+			"Input cardholder name:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "WriteExpirationDate", "EditExpirationDate":
 		return fmt.Sprintf(
-			"Input expiration date: \n\n%s\n\n",
+			"Input expiration date:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "WriteCode", "EditCode":
 		return fmt.Sprintf(
-			"Input code: \n\n%s\n\n",
+			"Input code:\n\n%s\n\n",
+			m.textInput.View(),
+		) + "\n"
+	case "WriteFile":
+		m.textInput.Placeholder = "File path"
+		return fmt.Sprintf(
+			"Input file path:\n\n%s\n\n",
 			m.textInput.View(),
 		) + "\n"
 	case "EditToServer":
@@ -625,7 +693,12 @@ func (m model) View() string {
 		s = "Reading"
 	case "ReadComplete":
 		s = fmt.Sprintf(
-			"Your data: \n\n%s\n\n ",
+			"Your data:\n\n%s\n\n",
+			*m.outputData,
+		) + "\n"
+	case "ReadFileComplete":
+		s = fmt.Sprintf(
+			"Path to file:\n\n%s\n\n",
 			*m.outputData,
 		) + "\n"
 	case "Delete":
@@ -831,6 +904,57 @@ func handleWrite(m model) stageCompleteMsg {
 	return msg
 }
 
+func handleWriteFile(m model) stageCompleteMsg {
+	var msg stageCompleteMsg
+
+	status, metadata, err := m.clientEnv.WriteFileHandle(m.newMetadata, []byte(*m.filePath))
+
+	if err != nil {
+		msg.ErrorMessage = err.Error()
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+	if status == 200 {
+		msg.ErrorMessage = ""
+		msg.NextStageNameKey = "DataSaved"
+		*m.userMetadata = append(*m.userMetadata, metadata)
+		return msg
+	}
+	if status != 200 {
+		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+
+	return msg
+}
+
+func handleEditFile(m model) stageCompleteMsg {
+	var msg stageCompleteMsg
+
+	metadataToEdit := m.targetObjectMetadata
+
+	status, metadata, err := m.clientEnv.EditFileHandle(metadataToEdit, m.newMetadata, []byte(*m.filePath))
+	if err != nil {
+		msg.ErrorMessage = err.Error()
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+	if status == 200 {
+		msg.ErrorMessage = ""
+		msg.NextStageNameKey = "DataSaved"
+		(*m.userMetadata)[m.targetObjectIndex] = metadata
+		return msg
+	}
+	if status != 200 {
+		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		msg.NextStageNameKey = "MainMenu"
+		return msg
+	}
+
+	return msg
+}
+
 func getMetadataByName(m model) (gophmodel.Metadata, int) {
 	var metadataToEdit gophmodel.Metadata
 
@@ -934,57 +1058,68 @@ func readHandle(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 	}
 
-	status, data, err := m.clientEnv.ReadHandle(metadataToRead)
-	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
-	}
-	if status != 200 {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
-	}
-	msg.ErrorMessage = ""
-	msg.NextStageNameKey = "ReadComplete"
-	*m.outputData = string(data)
-
-	return msg
-}
-
-func readFileHandle(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
-	var metadataToRead gophmodel.Metadata
-
-	for _, metadata := range *m.userMetadata {
-		if metadata.Name == *m.targetObjectName {
-			metadataToRead = metadata
+	if metadataToRead.DataType == "files" {
+		status, filePath, err := m.clientEnv.ReadFileHandle(metadataToRead)
+		if err != nil {
+			msg.ErrorMessage = "Could not request file " + err.Error()
+			msg.NextStageNameKey = "MainMenu"
+			return msg
 		}
-	}
+		if status != 200 {
+			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			msg.NextStageNameKey = "MainMenu"
+			return msg
+		}
+		msg.ErrorMessage = ""
+		msg.NextStageNameKey = "ReadFileComplete"
 
-	if metadataToRead == (gophmodel.Metadata{}) {
-		msg.ErrorMessage = "no such name"
-		msg.NextStageNameKey = "MainMenu"
-	}
+		*m.outputData = string(filePath)
 
-	status, data, err := m.clientEnv.ReadHandle(metadataToRead)
-	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
+		return msg
+	} else {
+		status, data, err := m.clientEnv.ReadHandle(metadataToRead)
+		if err != nil {
+			msg.ErrorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
+			msg.NextStageNameKey = "MainMenu"
+			return msg
+		}
+		if status != 200 {
+			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			msg.NextStageNameKey = "MainMenu"
+			return msg
+		}
+		if metadataToRead.DataType == "cards" {
+			var cardData gophmodel.CardData
+
+			if err = json.Unmarshal(data, &cardData); err != nil {
+				msg.ErrorMessage = "could not unmarshal JSON"
+				msg.NextStageNameKey = "MainMenu"
+			}
+
+			s := fmt.Sprintf("Number: %s Card holder: %s\n\nExpiry date: %s Code: %s", cardData.CardNumber, cardData.CardholderName, cardData.ExpiredAt, cardData.Code)
+
+			*m.outputData = string(s)
+		} else if metadataToRead.DataType == "passwords" {
+			var password gophmodel.LoginAndPasswordData
+
+			if err = json.Unmarshal(data, &password); err != nil {
+				msg.ErrorMessage = "could not unmarshal JSON"
+				msg.NextStageNameKey = "MainMenu"
+			}
+
+			s := fmt.Sprintf("Login: %s\nPassword: %s", password.Login, password.Password)
+
+			*m.outputData = string(s)
+		} else {
+			msg.ErrorMessage = "Could not find data of this datatype: " + metadataToRead.DataType
+			msg.NextStageNameKey = "MainMenu"
+		}
+
+		msg.ErrorMessage = ""
+		msg.NextStageNameKey = "ReadComplete"
+
 		return msg
 	}
-	if status != 200 {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
-	}
-	msg.ErrorMessage = ""
-	msg.NextStageNameKey = "ReadComplete"
-	
-	*m.outputData = string(data)
-
-	return msg
 }
 
 func deleteHandle(m model) stageCompleteMsg {

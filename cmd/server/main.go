@@ -51,6 +51,7 @@ func main() {
 	r.Post("/api/keep", env.KeepHandle)
 	r.Post("/api/delete", env.DeleteHandle)
 	r.Post("/api/edit", env.EditHandle)
+	r.Post("/api/editfile", env.EditFileHandle)
 
 	sugar.Infow(
 		"Starting server",
