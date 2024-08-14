@@ -6,6 +6,7 @@ import (
 	"gophkeep/client/internal/communication"
 	gophmodel "gophkeep/internal/model"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -729,12 +730,12 @@ func handleLogin(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "AuthFailed"
 		return msg
 	}
-	if status == 401 {
+	if status == http.StatusUnauthorized {
 		msg.ErrorMessage = "no such login and password pair found"
 		msg.NextStageNameKey = "AuthFailed"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "Sync"
 		return msg
@@ -752,12 +753,12 @@ func handleRegister(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "AuthFailed"
 		return msg
 	}
-	if status == 409 {
+	if status == http.StatusConflict {
 		msg.ErrorMessage = "login alredy in use"
 		msg.NextStageNameKey = "AuthFailed"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "AuthSuccess"
 		return msg
@@ -776,12 +777,12 @@ func handlePingServer(m model) tea.Cmd {
 			msg.NextStageNameKey = "PingFail"
 			return msg
 		}
-		if status != 200 {
-			msg.ErrorMessage = "status is not 200, it is: " + fmt.Sprint(status)
+		if status != http.StatusOK {
+			msg.ErrorMessage = "status is not OK, it is: " + fmt.Sprint(status)
 			msg.NextStageNameKey = "PingFail"
 			return msg
 		}
-		if status == 200 {
+		if status == http.StatusOK {
 			msg.ErrorMessage = ""
 			msg.NextStageNameKey = "SignInChoise"
 			return msg
@@ -800,12 +801,12 @@ func handleSync(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "SyncFail"
 		return msg
 	}
-	if status == 204 {
+	if status == http.StatusNoContent {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "MainMenu"
 		return msg
@@ -889,13 +890,13 @@ func handleWrite(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "DataSaved"
 		*m.userMetadata = append(*m.userMetadata, metadata)
 		return msg
 	}
-	if status != 200 {
+	if status != http.StatusOK {
 		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		msg.NextStageNameKey = "MainMenu"
 		return msg
@@ -914,13 +915,13 @@ func handleWriteFile(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "DataSaved"
 		*m.userMetadata = append(*m.userMetadata, metadata)
 		return msg
 	}
-	if status != 200 {
+	if status != http.StatusOK {
 		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		msg.NextStageNameKey = "MainMenu"
 		return msg
@@ -940,13 +941,13 @@ func handleEditFile(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "DataSaved"
 		(*m.userMetadata)[m.targetObjectIndex] = metadata
 		return msg
 	}
-	if status != 200 {
+	if status != http.StatusOK {
 		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		msg.NextStageNameKey = "MainMenu"
 		return msg
@@ -1010,13 +1011,13 @@ func handleEdit(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "DataSaved"
 		(*m.userMetadata)[m.targetObjectIndex] = metadata
 		return msg
 	}
-	if status != 200 {
+	if status != http.StatusOK {
 		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		msg.NextStageNameKey = "MainMenu"
 		return msg
@@ -1065,7 +1066,7 @@ func readHandle(m model) stageCompleteMsg {
 			msg.NextStageNameKey = "MainMenu"
 			return msg
 		}
-		if status != 200 {
+		if status != http.StatusOK {
 			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 			msg.NextStageNameKey = "MainMenu"
 			return msg
@@ -1083,7 +1084,7 @@ func readHandle(m model) stageCompleteMsg {
 			msg.NextStageNameKey = "MainMenu"
 			return msg
 		}
-		if status != 200 {
+		if status != http.StatusOK {
 			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 			msg.NextStageNameKey = "MainMenu"
 			return msg
@@ -1147,13 +1148,13 @@ func deleteHandle(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
-	if status != 200 {
+	if status != http.StatusOK {
 		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		msg.NextStageNameKey = "MainMenu"
 		return msg
 	}
 
-	if status == 200 {
+	if status == http.StatusOK {
 		msg.ErrorMessage = ""
 		msg.NextStageNameKey = "DeleteComplete"
 		(*m.userMetadata) = append((*m.userMetadata)[:deleteIndex], (*m.userMetadata)[deleteIndex+1:]...)

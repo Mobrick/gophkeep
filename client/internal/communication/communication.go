@@ -7,3 +7,7 @@ import (
 type ClientEnv struct {
 	authCookie *http.Cookie
 }
+
+const (
+	TimeoutSeconds = 10
+)

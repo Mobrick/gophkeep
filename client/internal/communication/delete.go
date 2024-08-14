@@ -11,7 +11,7 @@ import (
 
 func (env *ClientEnv) DeleteHandle(metadata gophmodel.Metadata) (int, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*100)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/api/delete"

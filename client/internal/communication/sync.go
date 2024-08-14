@@ -11,7 +11,7 @@ import (
 )
 
 func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/api/user/sync"
@@ -30,11 +30,11 @@ func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
 	}
 
 	defer response.Body.Close()
-	if response.StatusCode == 204 {
+	if response.StatusCode == http.StatusNoContent {
 		return response.StatusCode, nil, nil
 	}
 
-	if response.StatusCode == 200 {
+	if response.StatusCode == http.StatusOK {
 		var buf bytes.Buffer
 		var metadata []gophmodel.Metadata
 

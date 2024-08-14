@@ -12,7 +12,7 @@ import (
 )
 
 func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/api/readfile"
@@ -42,7 +42,7 @@ func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, e
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		return response.StatusCode, "", nil
 	}
 

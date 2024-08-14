@@ -11,7 +11,7 @@ import (
 
 func (env *ClientEnv) EditHandle(metadata gophmodel.Metadata, newMetadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*100)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/api/edit"
@@ -45,7 +45,7 @@ func (env *ClientEnv) EditHandle(metadata gophmodel.Metadata, newMetadata gophmo
 	if err != nil {
 		return 0, fullMetadata, err
 	}
-	if response.StatusCode == 200 {
+	if response.StatusCode == http.StatusOK {
 		var buf bytes.Buffer
 
 		_, err = buf.ReadFrom(response.Body)

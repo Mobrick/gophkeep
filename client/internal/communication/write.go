@@ -12,7 +12,7 @@ import (
 
 func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*100)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/api/keep"
@@ -45,7 +45,7 @@ func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte
 		return 0, fullMetadata, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode == 200 {
+	if response.StatusCode == http.StatusOK {
 		var buf bytes.Buffer
 
 		_, err = buf.ReadFrom(response.Body)

@@ -7,7 +7,7 @@ import (
 )
 
 func (env ClientEnv) PingServerHandle() (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	requestURL := "http://localhost:8080"
 	requestPath := "/ping"
