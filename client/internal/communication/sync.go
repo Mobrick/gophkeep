@@ -27,8 +27,8 @@ func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-
 	defer response.Body.Close()
+
 	if response.StatusCode == http.StatusNoContent {
 		return response.StatusCode, nil, nil
 	}

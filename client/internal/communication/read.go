@@ -40,6 +40,7 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 	if err != nil {
 		return 0, nil, err
 	}
+	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
 		return response.StatusCode, nil, nil
@@ -55,8 +56,6 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 	if err = json.Unmarshal(bytes, &readData); err != nil {
 		return 0, nil, err
 	}
-
-	defer response.Body.Close()
 
 	return response.StatusCode, []byte(readData.Data), nil
 }

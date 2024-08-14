@@ -86,6 +86,7 @@ func (env *ClientEnv) EditFileHandle(metadata gophmodel.Metadata, newMetadata go
 	if err != nil {
 		return 0, fullMetadata, err
 	}
+	defer response.Body.Close()
 	if response.StatusCode == http.StatusOK {
 		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
@@ -98,6 +99,5 @@ func (env *ClientEnv) EditFileHandle(metadata gophmodel.Metadata, newMetadata go
 
 		return response.StatusCode, fullMetadata, nil
 	}
-	defer response.Body.Close()
 	return response.StatusCode, fullMetadata, nil
 }

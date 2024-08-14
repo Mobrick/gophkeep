@@ -31,10 +31,9 @@ func (env *ClientEnv) RegisterHandle(loginData gophmodel.SimpleAccountData) (int
 	if err != nil {
 		return 0, err
 	}
+	defer response.Body.Close()
 	if len(response.Cookies()) != 0 {
 		env.authCookie = response.Cookies()[0]
 	}
-
-	defer response.Body.Close()
 	return response.StatusCode, nil
 }
