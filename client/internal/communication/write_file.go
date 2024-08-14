@@ -89,14 +89,12 @@ func (env *ClientEnv) WriteFileHandle(metadata gophmodel.SimpleMetadata, filePat
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusOK {
-		var buf bytes.Buffer
-
-		_, err = buf.ReadFrom(response.Body)
+		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
 			return 0, fullMetadata, err
 		}
 
-		if err = json.Unmarshal(buf.Bytes(), &fullMetadata); err != nil {
+		if err = json.Unmarshal(bytes, &fullMetadata); err != nil {
 			logger.Log.Info("could not unmarshal metadata")
 			return 0, fullMetadata, err
 		}

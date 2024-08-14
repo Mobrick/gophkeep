@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	gophmodel "gophkeep/internal/model"
+	"io"
 	"net/http"
 	"time"
 )
@@ -45,14 +46,12 @@ func (env *ClientEnv) EditHandle(metadata gophmodel.Metadata, newMetadata gophmo
 		return 0, fullMetadata, err
 	}
 	if response.StatusCode == http.StatusOK {
-		var buf bytes.Buffer
-
-		_, err = buf.ReadFrom(response.Body)
+		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
 			return 0, fullMetadata, err
 		}
 
-		if err = json.Unmarshal(buf.Bytes(), &fullMetadata); err != nil {
+		if err = json.Unmarshal(bytes, &fullMetadata); err != nil {
 			return 0, fullMetadata, err
 		}
 

@@ -1,11 +1,11 @@
 package communication
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"gophkeep/internal/logger"
 	gophmodel "gophkeep/internal/model"
+	"io"
 	"net/http"
 	"time"
 )
@@ -34,15 +34,13 @@ func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
 	}
 
 	if response.StatusCode == http.StatusOK {
-		var buf bytes.Buffer
 		var metadata []gophmodel.Metadata
-
-		_, err = buf.ReadFrom(response.Body)
+		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
 			return 0, nil, err
 		}
 
-		if err = json.Unmarshal(buf.Bytes(), &metadata); err != nil {
+		if err = json.Unmarshal(bytes, &metadata); err != nil {
 			logger.Log.Info("could not unmarshal metadata")
 			return 0, nil, err
 		}

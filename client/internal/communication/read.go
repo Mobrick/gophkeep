@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	gophmodel "gophkeep/internal/model"
+	"io"
 	"net/http"
 	"time"
 )
@@ -44,16 +45,14 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 		return response.StatusCode, nil, nil
 	}
 
-	var buf bytes.Buffer
+	var readData gophmodel.ReadResponse
 
-	_, err = buf.ReadFrom(response.Body)
+	bytes, err := io.ReadAll(response.Body)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	var readData gophmodel.ReadResponse
-
-	if err = json.Unmarshal(buf.Bytes(), &readData); err != nil {
+	if err = json.Unmarshal(bytes, &readData); err != nil {
 		return 0, nil, err
 	}
 

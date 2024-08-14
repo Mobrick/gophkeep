@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	gophmodel "gophkeep/internal/model"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,16 +45,14 @@ func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, e
 	if response.StatusCode != http.StatusOK {
 		return response.StatusCode, "", nil
 	}
-
-	var buf bytes.Buffer
 	var fileData gophmodel.FileData
 
-	_, err = buf.ReadFrom(response.Body)
+	bytes, err := io.ReadAll(response.Body)
 	if err != nil {
 		return 0, "", err
 	}
 
-	err = json.Unmarshal(buf.Bytes(), &fileData)
+	err = json.Unmarshal(bytes, &fileData)
 	if err != nil {
 		return 0, "", err
 	}
