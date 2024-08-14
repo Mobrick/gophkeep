@@ -10,13 +10,12 @@ import (
 	"time"
 )
 
-func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
+func (env ClientEnv) HandleSync() (int, []gophmodel.Metadata, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/api/user/sync"
 
-	req, err := http.NewRequest("GET", requestURL+requestPath, nil)
+	req, err := http.NewRequest("GET", baseURL+requestPath, nil)
 	if err != nil {
 		return 0, nil, err
 	}

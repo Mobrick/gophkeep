@@ -12,11 +12,10 @@ import (
 	"time"
 )
 
-func (env *ClientEnv) EditFileHandle(metadata gophmodel.Metadata, newMetadata gophmodel.SimpleMetadata, filePath []byte) (int, gophmodel.Metadata, error) {
+func (env *ClientEnv) HandleEditFile(metadata gophmodel.Metadata, newMetadata gophmodel.SimpleMetadata, filePath []byte) (int, gophmodel.Metadata, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/api/editfile"
 
 	editData := gophmodel.EditData{
@@ -74,7 +73,7 @@ func (env *ClientEnv) EditFileHandle(metadata gophmodel.Metadata, newMetadata go
 		return 0, fullMetadata, err
 	}
 
-	req, err := http.NewRequest("POST", requestURL+requestPath, buf)
+	req, err := http.NewRequest("POST", baseURL+requestPath, buf)
 	if err != nil {
 		return 0, fullMetadata, err
 	}

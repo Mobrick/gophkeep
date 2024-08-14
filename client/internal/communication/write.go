@@ -11,12 +11,11 @@ import (
 	"time"
 )
 
-func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
+func (env *ClientEnv) HandleWrite(metadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
-	requestPath := "/api/keep"
+	requestPath := writePath
 
 	initialData := gophmodel.InitialData{
 		Name:        metadata.Name,
@@ -32,7 +31,7 @@ func (env *ClientEnv) WriteHandle(metadata gophmodel.SimpleMetadata, data []byte
 		return 0, fullMetadata, err
 	}
 
-	req, err := http.NewRequest("POST", requestURL+requestPath, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
 	if err != nil {
 		return 0, fullMetadata, err
 	}

@@ -6,13 +6,12 @@ import (
 	"time"
 )
 
-func (env ClientEnv) PingServerHandle() (int, error) {
+func (env ClientEnv) HandlePingServer() (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/ping"
 
-	req, err := http.NewRequest("GET", requestURL+requestPath, nil)
+	req, err := http.NewRequest("GET", baseURL+requestPath, nil)
 	if err != nil {
 		return 0, err
 	}

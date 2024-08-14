@@ -9,11 +9,10 @@ import (
 	"time"
 )
 
-func (env *ClientEnv) DeleteHandle(metadata gophmodel.Metadata) (int, error) {
+func (env *ClientEnv) HandleDelete(metadata gophmodel.Metadata) (int, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/api/delete"
 
 	deleteData := gophmodel.DataToDelete{
@@ -27,14 +26,14 @@ func (env *ClientEnv) DeleteHandle(metadata gophmodel.Metadata) (int, error) {
 		return 0, err
 	}
 
-	req, err := http.NewRequest("POST", requestURL+requestPath, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
 	if err != nil {
 		return 0, err
 	}
 	req = req.WithContext(ctx)
 	req.AddCookie(env.authCookie)
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, err

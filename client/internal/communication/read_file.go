@@ -12,10 +12,9 @@ import (
 	"time"
 )
 
-func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, error) {
+func (env ClientEnv) HandleReadFile(metadata gophmodel.Metadata) (int, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/api/readfile"
 
 	dataInfo := gophmodel.DataToRead{
@@ -29,7 +28,7 @@ func (env ClientEnv) ReadFileHandle(metadata gophmodel.Metadata) (int, string, e
 		return 0, "", err
 	}
 
-	req, err := http.NewRequest("GET", requestURL+requestPath, bytes.NewBuffer(body))
+	req, err := http.NewRequest("GET", baseURL+requestPath, bytes.NewBuffer(body))
 	if err != nil {
 		return 0, "", err
 	}

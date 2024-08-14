@@ -9,10 +9,9 @@ import (
 	"time"
 )
 
-func (env *ClientEnv) LoginHandle(loginData gophmodel.SimpleAccountData) (int, error) {
+func (env *ClientEnv) HandleLogin(loginData gophmodel.SimpleAccountData) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
-	requestURL := "http://localhost:8080"
 	requestPath := "/api/user/login"
 
 	body, err := json.Marshal(loginData)
@@ -20,7 +19,7 @@ func (env *ClientEnv) LoginHandle(loginData gophmodel.SimpleAccountData) (int, e
 		return 0, err
 	}
 
-	req, err := http.NewRequest("POST", requestURL+requestPath, bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
 	if err != nil {
 		return 0, err
 	}

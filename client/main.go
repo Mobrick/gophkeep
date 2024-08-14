@@ -36,7 +36,7 @@ type model struct {
 	filePath             *string
 }
 
-type tickMsg time.Time
+type timerTickMsg time.Time
 
 func initialModel() model {
 	ti := textinput.New()
@@ -724,7 +724,7 @@ type stageCompleteMsg struct {
 
 func handleLogin(m model) stageCompleteMsg {
 	var msg stageCompleteMsg
-	status, err := m.clientEnv.LoginHandle(m.loginInfo)
+	status, err := m.clientEnv.HandleLogin(m.loginInfo)
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "AuthFailed"
@@ -747,7 +747,7 @@ func handleLogin(m model) stageCompleteMsg {
 
 func handleRegister(m model) stageCompleteMsg {
 	var msg stageCompleteMsg
-	status, err := m.clientEnv.RegisterHandle(m.loginInfo)
+	status, err := m.clientEnv.HandleRegister(m.loginInfo)
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "AuthFailed"
@@ -770,7 +770,7 @@ func handleRegister(m model) stageCompleteMsg {
 
 func handlePingServer(m model) tea.Cmd {
 	return func() tea.Msg {
-		status, err := m.clientEnv.PingServerHandle()
+		status, err := m.clientEnv.HandlePingServer()
 		var msg stageCompleteMsg
 		if err != nil {
 			msg.ErrorMessage = err.Error()
@@ -792,7 +792,7 @@ func handlePingServer(m model) tea.Cmd {
 }
 
 func handleSync(m model) stageCompleteMsg {
-	status, userMetadata, err := m.clientEnv.SyncHandle()
+	status, userMetadata, err := m.clientEnv.HandleSync()
 	*m.userMetadata = userMetadata
 
 	var msg stageCompleteMsg
@@ -884,7 +884,7 @@ func handleWrite(m model) stageCompleteMsg {
 		data = bytes
 	}
 
-	status, metadata, err := m.clientEnv.WriteHandle(m.newMetadata, data)
+	status, metadata, err := m.clientEnv.HandleWrite(m.newMetadata, data)
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "MainMenu"
@@ -908,7 +908,7 @@ func handleWrite(m model) stageCompleteMsg {
 func handleWriteFile(m model) stageCompleteMsg {
 	var msg stageCompleteMsg
 
-	status, metadata, err := m.clientEnv.WriteFileHandle(m.newMetadata, []byte(*m.filePath))
+	status, metadata, err := m.clientEnv.HandleWriteFile(m.newMetadata, []byte(*m.filePath))
 
 	if err != nil {
 		msg.ErrorMessage = err.Error()
@@ -935,7 +935,7 @@ func handleEditFile(m model) stageCompleteMsg {
 
 	metadataToEdit := m.targetObjectMetadata
 
-	status, metadata, err := m.clientEnv.EditFileHandle(metadataToEdit, m.newMetadata, []byte(*m.filePath))
+	status, metadata, err := m.clientEnv.HandleEditFile(metadataToEdit, m.newMetadata, []byte(*m.filePath))
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "MainMenu"
@@ -1005,7 +1005,7 @@ func handleEdit(m model) stageCompleteMsg {
 		data = bytes
 	}
 
-	status, metadata, err := m.clientEnv.EditHandle(metadataToEdit, m.newMetadata, data)
+	status, metadata, err := m.clientEnv.HandleEdit(metadataToEdit, m.newMetadata, data)
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "MainMenu"
@@ -1060,7 +1060,7 @@ func readHandle(m model) stageCompleteMsg {
 	}
 
 	if metadataToRead.DataType == "files" {
-		status, filePath, err := m.clientEnv.ReadFileHandle(metadataToRead)
+		status, filePath, err := m.clientEnv.HandleReadFile(metadataToRead)
 		if err != nil {
 			msg.ErrorMessage = "Could not request file " + err.Error()
 			msg.NextStageNameKey = "MainMenu"
@@ -1078,7 +1078,7 @@ func readHandle(m model) stageCompleteMsg {
 
 		return msg
 	} else {
-		status, data, err := m.clientEnv.ReadHandle(metadataToRead)
+		status, data, err := m.clientEnv.HandleRead(metadataToRead)
 		if err != nil {
 			msg.ErrorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
 			msg.NextStageNameKey = "MainMenu"
@@ -1142,7 +1142,7 @@ func deleteHandle(m model) stageCompleteMsg {
 		msg.NextStageNameKey = "MainMenu"
 	}
 
-	status, err := m.clientEnv.DeleteHandle(metadataToDelete)
+	status, err := m.clientEnv.HandleDelete(metadataToDelete)
 	if err != nil {
 		msg.ErrorMessage = err.Error()
 		msg.NextStageNameKey = "MainMenu"
@@ -1178,6 +1178,6 @@ func main() {
 
 func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg(t)
+		return timerTickMsg(t)
 	})
 }
