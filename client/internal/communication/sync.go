@@ -23,8 +23,7 @@ func (env ClientEnv) SyncHandle() (int, []gophmodel.Metadata, error) {
 	req = req.WithContext(ctx)
 	req.AddCookie(env.authCookie)
 
-	client := &http.Client{}
-	response, err := client.Do(req)
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}

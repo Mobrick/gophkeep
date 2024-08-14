@@ -19,8 +19,8 @@ func (env ClientEnv) PingServerHandle() (int, error) {
 
 	req = req.WithContext(ctx)
 
-	client := &http.Client{}
-	response, err := client.Do(req)
+	env.httpClient = &http.Client{}
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, err
 	}

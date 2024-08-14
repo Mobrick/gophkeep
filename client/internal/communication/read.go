@@ -35,8 +35,7 @@ func (env ClientEnv) ReadHandle(metadata gophmodel.Metadata) (int, []byte, error
 	req = req.WithContext(ctx)
 	req.AddCookie(env.authCookie)
 
-	client := &http.Client{}
-	response, err := client.Do(req)
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}

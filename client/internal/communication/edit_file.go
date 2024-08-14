@@ -82,8 +82,7 @@ func (env *ClientEnv) EditFileHandle(metadata gophmodel.Metadata, newMetadata go
 	req.AddCookie(env.authCookie)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	client := &http.Client{}
-	response, err := client.Do(req)
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, fullMetadata, err
 	}

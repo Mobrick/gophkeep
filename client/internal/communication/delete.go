@@ -34,9 +34,8 @@ func (env *ClientEnv) DeleteHandle(metadata gophmodel.Metadata) (int, error) {
 	req = req.WithContext(ctx)
 	req.AddCookie(env.authCookie)
 	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	response, err := client.Do(req)
+	
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, err
 	}

@@ -27,8 +27,7 @@ func (env *ClientEnv) LoginHandle(loginData gophmodel.SimpleAccountData) (int, e
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	response, err := client.Do(req)
+	response, err := env.httpClient.Do(req)
 	if err != nil {
 		return 0, err
 	}

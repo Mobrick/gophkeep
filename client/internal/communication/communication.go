@@ -6,6 +6,7 @@ import (
 
 type ClientEnv struct {
 	authCookie *http.Cookie
+	httpClient *http.Client
 }
 
 const (
