@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gophkeep/internal/auth"
 	"gophkeep/internal/config"
 	"gophkeep/internal/database"
 	"gophkeep/internal/handler"
@@ -33,12 +34,14 @@ func main() {
 	env := &handler.Env{
 		ConfigStruct: cfg,
 		Storage:      database.NewDB(ctx, cfg.FlagDBConnectionAddress),
+		UserID:       "",
 	}
 
 	defer env.Storage.Close()
 
 	r := chi.NewRouter()
 	r.Use(logger.LoggingMiddleware)
+	r.Use(auth.CookieMiddleware)
 
 	r.Get(`/ping`, env.PingDBHandle)
 	r.Get(`/api/user/sync`, env.SyncHandle)

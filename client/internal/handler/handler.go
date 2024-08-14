@@ -16,7 +16,7 @@ type ClientEnv struct {
 }
 
 const (
-	TimeoutSeconds = 10
+	TimeoutSeconds = 30
 	baseURL        = "http://localhost:8080"
 	loginPath      = "/api/user/login"
 	registerPath   = "/api/user/register"
@@ -31,7 +31,7 @@ const (
 	writePath      = "/api/keep"
 )
 
-func (env ClientEnv) makeRequest(httpMethod string, requestPath string, body []byte, addAuthCookie bool) (*http.Response, error) {
+func (env *ClientEnv) makeRequest(httpMethod string, requestPath string, body []byte, addAuthCookie bool) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 	req, err := http.NewRequest(httpMethod, baseURL+requestPath, bytes.NewBuffer(body))
@@ -52,7 +52,7 @@ func (env ClientEnv) makeRequest(httpMethod string, requestPath string, body []b
 	return response, err
 }
 
-func (env ClientEnv) makeWriteFileRequest(requestPath string, filepath string, bodyInfo []byte) (*http.Response, error) {
+func (env *ClientEnv) makeWriteFileRequest(requestPath string, filepath string, bodyInfo []byte) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
 	defer cancel()
 

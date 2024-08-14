@@ -11,11 +11,7 @@ import (
 
 func (env Env) DeleteHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	userID, ok := auth.CookieIsValid(req)
-	if !ok {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	userID := ctx.Value(auth.KeyUserID).(string)
 
 	var deleteData model.DataToDelete
 	var buf bytes.Buffer

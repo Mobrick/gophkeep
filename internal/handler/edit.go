@@ -15,11 +15,7 @@ import (
 
 func (env Env) EditHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	userID, ok := auth.CookieIsValid(req)
-	if !ok {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	userID := ctx.Value(auth.KeyUserID).(string)
 
 	var editData model.EditData
 	var buf bytes.Buffer

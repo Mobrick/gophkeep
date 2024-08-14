@@ -11,11 +11,7 @@ import (
 
 func (env Env) ReadHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	userID, ok := auth.CookieIsValid(req)
-	if !ok {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	userID := ctx.Value(auth.KeyUserID).(string)
 
 	var readData model.DataToRead
 	var buf bytes.Buffer

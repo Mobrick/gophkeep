@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -11,6 +13,11 @@ import (
 
 const TokenExp = time.Hour * 3
 const SecretKey = "tratatata"
+type userIDKey int
+
+const (
+    KeyUserID userIDKey = iota
+)
 
 type Claims struct {
 	jwt.RegisteredClaims
@@ -90,4 +97,24 @@ func buildJWTString(newID string) (string, error) {
 
 	// возвращаем строку токена
 	return tokenString, nil
+}
+
+// CookieMiddleware создает куки если её не было, и добавляет к запросу и к ответу.
+func CookieMiddleware(h http.Handler) http.Handler {
+	cookieFn := func(w http.ResponseWriter, r *http.Request) {
+		skipPaths := []string{"/ping", "/api/user/login", "/api/user/register"}
+
+		if !slices.Contains(skipPaths, r.URL.Path) {
+			userID, ok := CookieIsValid(r)
+			if !ok {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			ctx := context.WithValue(r.Context(), KeyUserID, userID)
+			h.ServeHTTP(w, r.WithContext(ctx))
+		} else {
+			h.ServeHTTP(w, r)
+		}
+	}
+	return http.HandlerFunc(cookieFn)
 }

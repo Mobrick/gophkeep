@@ -14,6 +14,7 @@ import (
 type Env struct {
 	ConfigStruct *config.Config
 	Storage      database.Storage
+	UserID       string
 }
 
 func StorageData(ctx context.Context, initialData model.InitialData, userID string, env Env, realSK string, encryptedSK string, data string) (model.Metadata, error) {

@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,7 +29,7 @@ type model struct {
 
 type stageState struct {
 	nextStage    string
-	ErrorMessage string
+	errorMessage string
 }
 
 type ui struct {
@@ -52,8 +51,6 @@ type newData struct {
 	CardData             gophmodel.CardData
 	FilePath             string
 }
-
-type tickMsg time.Time
 
 func initialModel() model {
 	ti := textinput.New()
@@ -108,11 +105,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "PasswordInput":
 		return m.updatePasswordInput(msg, cmd)
 	case "Auth":
-		return m.updateAuth(cmd)
+		m.updateAuth(cmd)
+		return m, cmd
 	case "AuthFailed":
 		return m.updateAuthFailed(cmd)
 	case "Sync":
-		return m.updateSync()
+		m.updateSync(cmd)
+		return m, cmd
 	case "MainMenu":
 		return m.updateMainMenu(msg, cmd)
 	case "Write":
@@ -140,11 +139,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "WriteCode":
 		return m.updateWriteCode(msg, cmd)
 	case "WriteFileToServer":
-		return m.updateWriteFileToServer(cmd)
+		m.updateWriteFileToServer(cmd)
+		return m, cmd
 	case "EditFileToServer":
-		return m.updateEditFileToServer(cmd)
+		m.updateEditFileToServer(cmd)
+		return m, cmd
 	case "WriteToServer":
-		return m.updateWriteToServer(cmd)
+		m.updateWriteToServer(cmd)
+		return m, cmd
 	case "Edit":
 		return m.updateEdit()
 	case "EditDescription":
@@ -162,24 +164,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "EditCode":
 		return m.updateEditCode(msg, cmd)
 	case "EditToServer":
-		return m.updateEditToServer(cmd)
+		m.updateEditToServer(cmd)
+		return m, cmd
 	case "DataSaved":
 		return m.updateDataSaved(cmd)
 	case "List":
 		return m.updateList(msg, cmd)
 	case "Read":
-		return m.updateRead(cmd)
+		m.updateRead(cmd)
+		return m, cmd
 	case "ReadComplete":
 		return m.updateReadComplete(msg, cmd)
 	case "ReadFileComplete":
 		return m.updateReadFileComplete(msg, cmd)
 	case "Delete":
-		return m.updateDelete(cmd)
+		m.updateDelete(cmd)
+		return m, cmd
 	case "DeleteComplete":
 		return m.updateDeleteComplete(msg, cmd)
 	}
 
-	return m, tick()
+	return m, cmd
 }
 
 func (m model) updateDeleteComplete(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
@@ -397,7 +402,7 @@ func (m model) updateEditDescription(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.C
 func (m model) updateEdit() (tea.Model, tea.Cmd) {
 	m.TargetObject.Metadata, m.TargetObject.Index = getMetadataByName(m)
 	if m.TargetObject.Index < 0 {
-		m.stageState.ErrorMessage = "no such name"
+		m.stageState.errorMessage = "no such name"
 		m.stageState.nextStage = "MainMenu"
 	}
 	m.stageState.nextStage = "EditDescription"
@@ -625,7 +630,7 @@ func (m model) updateWriteName(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.NewData.Metadata.Name = m.TextInput.Value()
 			if nameAlreadyExists(m, m.NewData.Metadata.Name) {
-				m.stageState.ErrorMessage = "you already use that data name"
+				m.stageState.errorMessage = "you already use that data name"
 				m.stageState.nextStage = "MainMenu"
 			} else {
 				m.stageState.nextStage = "WriteDescription"
@@ -642,7 +647,7 @@ func (m model) updateWrite() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateMainMenu(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+func (m *model) updateMainMenu(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -652,17 +657,17 @@ func (m model) updateMainMenu(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "enter":
-			msg := handleMainMenuCommand(m)
+			m.handleMainMenuCommand()
 			m.TextInput.SetValue("")
-			return m, msg
+			return m, cmd
 		}
 	}
 	return m, cmd
 }
 
-func (m model) updateSync() (tea.Model, tea.Cmd) {
+func (m model) updateSync(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	m.handleSync()
-	return m, tick()
+	return m, cmd
 }
 
 func (m model) updateAuthFailed(cmd tea.Cmd) (tea.Model, tea.Cmd) {
@@ -753,17 +758,17 @@ func (m model) updatePingFail(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	var s string
+	s := m.stageState.nextStage + " stage"
 	switch m.stageState.nextStage {
 	case "PingServer":
 		s = "Connecting to server"
 	case "SignInChoise":
 		s = "type 'l' or 'r' to login or register"
-		if len(m.stageState.ErrorMessage) != 0 {
-			s = m.stageState.ErrorMessage + "\n" + s
+		if len(m.stageState.errorMessage) != 0 {
+			s = m.stageState.errorMessage + "\n" + s
 		}
 	case "PingFail":
-		s = m.stageState.ErrorMessage + "\n Could not connect to the server" +
+		s = m.stageState.errorMessage + "\n Could not connect to the server" +
 			"\n Press Enter to retry"
 
 	case "LoginRegisterInputs":
@@ -781,10 +786,12 @@ func (m model) View() string {
 		) + "\n"
 	case "Sync":
 		s = "Loading data from server"
+	case "SyncFail":
+		s = "Sync failed " + m.stageState.errorMessage
 	case "MainMenu":
 		errorMessage := ""
-		if len(m.stageState.ErrorMessage) != 0 {
-			errorMessage = m.stageState.ErrorMessage + "\n\n"
+		if len(m.stageState.errorMessage) != 0 {
+			errorMessage = m.stageState.errorMessage + "\n\n"
 		}
 		m.TextInput.Placeholder = "Type command here"
 		s = errorMessage + "Menu\n\n" + "type:\n\nread <name> to read your saved data" +
@@ -884,67 +891,62 @@ func startAppCmd() tea.Msg {
 	return startAppMsg{}
 }
 
-type stageCompleteMsg struct {
-	NextStageNameKey string
-	ErrorMessage     string
-}
-
 func (m model) handleLogin() {
 	status, err := m.ClientEnv.HandleLogin(m.NewData.LoginInfo)
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "AuthFailed"
 		return
 	}
 	if status == http.StatusUnauthorized {
-		m.stageState.ErrorMessage = "no such login and password pair found"
+		m.stageState.errorMessage = "no such login and password pair found"
 		m.stageState.nextStage = "AuthFailed"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "Sync"
 		return
 	}
-	m.stageState.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
+	m.stageState.errorMessage = "server error, unexpected status: " + fmt.Sprint(status)
 	m.stageState.nextStage = "AuthFailed"
 }
 
 func (m model) handleRegister() {
 	status, err := m.ClientEnv.HandleRegister(m.NewData.LoginInfo)
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "AuthFailed"
 		return
 	}
 	if status == http.StatusConflict {
-		m.stageState.ErrorMessage = "login alredy in use"
+		m.stageState.errorMessage = "login alredy in use"
 		m.stageState.nextStage = "AuthFailed"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "AuthSuccess"
 		return
 	}
-	m.stageState.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
+	m.stageState.errorMessage = "server error, unexpected status: " + fmt.Sprint(status)
 	m.stageState.nextStage = "AuthFailed"
 }
 
 func (m model) handlePingServer() {
 	status, err := m.ClientEnv.HandlePingServer()
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "PingFail"
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "status is not OK, it is: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "status is not OK, it is: " + fmt.Sprint(status)
 		m.stageState.nextStage = "PingFail"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "SignInChoise"
 		return
 	}
@@ -955,59 +957,55 @@ func (m model) handleSync() {
 	*m.UserMetadata = userMetadata
 
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "SyncFail"
 		return
 	}
 	if status == http.StatusNoContent || status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 }
 
-func handleMainMenuCommand(m model) tea.Cmd {
-	return func() tea.Msg {
-		var msg stageCompleteMsg
-		command := m.TextInput.Value()
-		commandSlice := strings.Fields(command)
-		switch len(commandSlice) {
-		case 0:
-			m.stageState.ErrorMessage = "command didn't have any words"
-			m.stageState.nextStage = "MainMenu"
-		case 1:
-			switch commandSlice[0] {
-			case "write":
-				m.stageState.ErrorMessage = ""
-				m.stageState.nextStage = "Write"
-			case "list":
-				m.stageState.ErrorMessage = ""
-				m.stageState.nextStage = "List"
-			default:
-				m.stageState.ErrorMessage = "Unknown command"
-				m.stageState.nextStage = "MainMenu"
-			}
-		case 2:
-			switch commandSlice[0] {
-			case "read":
-				m.stageState.ErrorMessage = ""
-				m.stageState.nextStage = "Read"
-			case "delete":
-				m.stageState.ErrorMessage = ""
-				m.stageState.nextStage = "Delete"
-			case "edit":
-				m.stageState.ErrorMessage = ""
-				m.stageState.nextStage = "Edit"
-			default:
-				m.stageState.ErrorMessage = "Unknown command"
-				m.stageState.nextStage = "MainMenu"
-			}
-			m.TargetObject.Name = commandSlice[1]
+func (m model) handleMainMenuCommand() {
+	command := m.TextInput.Value()
+	commandSlice := strings.Fields(command)
+	switch len(commandSlice) {
+	case 0:
+		m.stageState.errorMessage = "command didn't have any words"
+		m.stageState.nextStage = "MainMenu"
+	case 1:
+		switch commandSlice[0] {
+		case "write":
+			m.stageState.errorMessage = ""
+			m.stageState.nextStage = "Write"
+		case "list":
+			m.stageState.errorMessage = ""
+			m.stageState.nextStage = "List"
 		default:
-			m.stageState.ErrorMessage = "Unknown command"
+			m.stageState.errorMessage = "Unknown command"
 			m.stageState.nextStage = "MainMenu"
 		}
-		return msg
+	case 2:
+		switch commandSlice[0] {
+		case "read":
+			m.stageState.errorMessage = ""
+			m.stageState.nextStage = "Read"
+		case "delete":
+			m.stageState.errorMessage = ""
+			m.stageState.nextStage = "Delete"
+		case "edit":
+			m.stageState.errorMessage = ""
+			m.stageState.nextStage = "Edit"
+		default:
+			m.stageState.errorMessage = "Unknown command"
+			m.stageState.nextStage = "MainMenu"
+		}
+		m.TargetObject.Name = commandSlice[1]
+	default:
+		m.stageState.errorMessage = "Unknown command"
+		m.stageState.nextStage = "MainMenu"
 	}
 }
 
@@ -1019,7 +1017,7 @@ func (m model) handleWrite() {
 		bytes, err := json.Marshal(m.NewData.LoginAndPasswordData)
 		m.NewData.LoginAndPasswordData = gophmodel.LoginAndPasswordData{}
 		if err != nil {
-			m.stageState.ErrorMessage = err.Error()
+			m.stageState.errorMessage = err.Error()
 			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
@@ -1028,7 +1026,7 @@ func (m model) handleWrite() {
 		bytes, err := json.Marshal(m.NewData.CardData)
 		m.NewData.CardData = gophmodel.CardData{}
 		if err != nil {
-			m.stageState.ErrorMessage = err.Error()
+			m.stageState.errorMessage = err.Error()
 			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
@@ -1036,18 +1034,18 @@ func (m model) handleWrite() {
 
 	status, metadata, err := m.ClientEnv.HandleWrite(m.NewData.Metadata, data)
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "DataSaved"
 		*m.UserMetadata = append(*m.UserMetadata, metadata)
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
@@ -1057,18 +1055,18 @@ func (m model) handleWriteFile() {
 	status, metadata, err := m.ClientEnv.HandleWriteFile(m.NewData.Metadata, []byte(m.NewData.FilePath))
 
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "DataSaved"
 		*m.UserMetadata = append(*m.UserMetadata, metadata)
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
@@ -1079,18 +1077,18 @@ func (m model) handleEditFile() {
 
 	status, metadata, err := m.ClientEnv.HandleEditFile(metadataToEdit, m.NewData.Metadata, []byte(m.NewData.FilePath))
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "DataSaved"
 		(*m.UserMetadata)[m.TargetObject.Index] = metadata
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
@@ -1129,7 +1127,7 @@ func (m model) handleEdit() {
 		bytes, err := json.Marshal(m.NewData.LoginAndPasswordData)
 		m.NewData.LoginAndPasswordData = gophmodel.LoginAndPasswordData{}
 		if err != nil {
-			m.stageState.ErrorMessage = err.Error()
+			m.stageState.errorMessage = err.Error()
 			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
@@ -1137,7 +1135,7 @@ func (m model) handleEdit() {
 		bytes, err := json.Marshal(m.NewData.CardData)
 		m.NewData.CardData = gophmodel.CardData{}
 		if err != nil {
-			m.stageState.ErrorMessage = err.Error()
+			m.stageState.errorMessage = err.Error()
 			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
@@ -1145,18 +1143,18 @@ func (m model) handleEdit() {
 
 	status, metadata, err := m.ClientEnv.HandleEdit(metadataToEdit, m.NewData.Metadata, data)
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "DataSaved"
 		(*m.UserMetadata)[m.TargetObject.Index] = metadata
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
@@ -1189,23 +1187,23 @@ func (m model) readHandle() {
 	}
 
 	if metadataToRead == (gophmodel.Metadata{}) {
-		m.stageState.ErrorMessage = "no such name"
+		m.stageState.errorMessage = "no such name"
 		m.stageState.nextStage = "MainMenu"
 	}
 
 	if metadataToRead.DataType == "files" {
 		status, filePath, err := m.ClientEnv.HandleReadFile(metadataToRead)
 		if err != nil {
-			m.stageState.ErrorMessage = "Could not request file " + err.Error()
+			m.stageState.errorMessage = "Could not request file " + err.Error()
 			m.stageState.nextStage = "MainMenu"
 			return
 		}
 		if status != http.StatusOK {
-			m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 			m.stageState.nextStage = "MainMenu"
 			return
 		}
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "ReadFileComplete"
 
 		*m.OutputData = string(filePath)
@@ -1214,12 +1212,12 @@ func (m model) readHandle() {
 	} else {
 		status, data, err := m.ClientEnv.HandleRead(metadataToRead)
 		if err != nil {
-			m.stageState.ErrorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
+			m.stageState.errorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
 			m.stageState.nextStage = "MainMenu"
 			return
 		}
 		if status != http.StatusOK {
-			m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 			m.stageState.nextStage = "MainMenu"
 			return
 		}
@@ -1227,7 +1225,7 @@ func (m model) readHandle() {
 			var cardData gophmodel.CardData
 
 			if err = json.Unmarshal(data, &cardData); err != nil {
-				m.stageState.ErrorMessage = "could not unmarshal JSON"
+				m.stageState.errorMessage = "could not unmarshal JSON"
 				m.stageState.nextStage = "MainMenu"
 			}
 
@@ -1238,7 +1236,7 @@ func (m model) readHandle() {
 			var password gophmodel.LoginAndPasswordData
 
 			if err = json.Unmarshal(data, &password); err != nil {
-				m.stageState.ErrorMessage = "could not unmarshal JSON"
+				m.stageState.errorMessage = "could not unmarshal JSON"
 				m.stageState.nextStage = "MainMenu"
 			}
 
@@ -1246,11 +1244,11 @@ func (m model) readHandle() {
 
 			*m.OutputData = string(s)
 		} else {
-			m.stageState.ErrorMessage = "Could not find data of this datatype: " + metadataToRead.DataType
+			m.stageState.errorMessage = "Could not find data of this datatype: " + metadataToRead.DataType
 			m.stageState.nextStage = "MainMenu"
 		}
 
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "ReadComplete"
 
 		return
@@ -1270,24 +1268,24 @@ func (m model) deleteHandle() {
 	}
 
 	if deleteIndex == -1 || metadataToDelete == (gophmodel.Metadata{}) {
-		m.stageState.ErrorMessage = "no such name"
+		m.stageState.errorMessage = "no such name"
 		m.stageState.nextStage = "MainMenu"
 	}
 
 	status, err := m.ClientEnv.HandleDelete(metadataToDelete)
 	if err != nil {
-		m.stageState.ErrorMessage = err.Error()
+		m.stageState.errorMessage = err.Error()
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 	if status != http.StatusOK {
-		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.errorMessage = "Something went wrong with status: " + fmt.Sprint(status)
 		m.stageState.nextStage = "MainMenu"
 		return
 	}
 
 	if status == http.StatusOK {
-		m.stageState.ErrorMessage = ""
+		m.stageState.errorMessage = ""
 		m.stageState.nextStage = "DeleteComplete"
 		(*m.UserMetadata) = append((*m.UserMetadata)[:deleteIndex], (*m.UserMetadata)[deleteIndex+1:]...)
 		return
@@ -1304,10 +1302,4 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func tick() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg(t)
-	})
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-func (env ClientEnv) HandlePingServer() (int, error) {
+func (env *ClientEnv) HandlePingServer() (int, error) {
 	env.httpClient = &http.Client{}
 	response, err := env.makeRequest(http.MethodGet, pingPath, nil, false)
 	if err != nil {

@@ -9,11 +9,7 @@ import (
 
 func (env Env) SyncHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	userID, ok := auth.CookieIsValid(req)
-	if !ok {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	userID := ctx.Value(auth.KeyUserID).(string)
 
 	metadata, err := env.Storage.GetMetadataByUserID(ctx, userID)
 	if err != nil {

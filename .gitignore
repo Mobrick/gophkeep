@@ -22,4 +22,5 @@ vendor/
 
 config_string.txt
 debug.txt
+tmp
 
