@@ -1,33 +1,19 @@
-package communication
+package handler
 
 import (
-	"context"
 	"encoding/json"
 	"gophkeep/internal/logger"
 	gophmodel "gophkeep/internal/model"
 	"io"
 	"net/http"
-	"time"
 )
 
 func (env ClientEnv) HandleSync() (int, []gophmodel.Metadata, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := "/api/user/sync"
-
-	req, err := http.NewRequest("GET", baseURL+requestPath, nil)
-	if err != nil {
-		return 0, nil, err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeRequest(http.MethodGet, syncPath, nil, true)
 	if err != nil {
 		return 0, nil, err
 	}
 	defer response.Body.Close()
-
 	if response.StatusCode == http.StatusNoContent {
 		return response.StatusCode, nil, nil
 	}

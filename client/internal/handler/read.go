@@ -1,21 +1,14 @@
-package communication
+package handler
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	gophmodel "gophkeep/internal/model"
 	"io"
 	"net/http"
-	"time"
 )
 
 func (env ClientEnv) HandleRead(metadata gophmodel.Metadata) (int, []byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := "/api/read"
-
 	dataInfo := gophmodel.DataToRead{
 		StaticID: metadata.StaticID,
 		UserID:   metadata.UserID,
@@ -28,14 +21,7 @@ func (env ClientEnv) HandleRead(metadata gophmodel.Metadata) (int, []byte, error
 		return 0, nil, err
 	}
 
-	req, err := http.NewRequest("GET", baseURL+requestPath, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, nil, err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeRequest(http.MethodGet, readPath, body, true)
 	if err != nil {
 		return 0, nil, err
 	}

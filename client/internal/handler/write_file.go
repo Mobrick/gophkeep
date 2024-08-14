@@ -1,49 +1,33 @@
-package communication
+package handler
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"gophkeep/internal/logger"
 	gophmodel "gophkeep/internal/model"
 	"io"
 	"net/http"
-	"time"
 )
 
-func (env *ClientEnv) HandleWrite(metadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := writePath
-
+func (env *ClientEnv) HandleWriteFile(metadata gophmodel.SimpleMetadata, filePath []byte) (int, gophmodel.Metadata, error) {
 	initialData := gophmodel.InitialData{
 		Name:        metadata.Name,
 		Description: metadata.Description,
 		DataType:    metadata.DataType,
-		Data:        string(data),
 	}
 
 	var fullMetadata gophmodel.Metadata
 
-	body, err := json.Marshal(initialData)
+	bodyInfo, err := json.Marshal(initialData)
 	if err != nil {
 		return 0, fullMetadata, err
 	}
 
-	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, fullMetadata, err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-	req.Header.Set("Content-Type", "application/json")
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeWriteFileRequest(writeFilePath, string(filePath), bodyInfo)
 	if err != nil {
 		return 0, fullMetadata, err
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode == http.StatusOK {
 		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
@@ -54,8 +38,6 @@ func (env *ClientEnv) HandleWrite(metadata gophmodel.SimpleMetadata, data []byte
 			logger.Log.Info("could not unmarshal metadata")
 			return 0, fullMetadata, err
 		}
-
-		return response.StatusCode, fullMetadata, nil
 	}
 	return response.StatusCode, fullMetadata, nil
 }

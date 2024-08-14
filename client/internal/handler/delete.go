@@ -1,20 +1,12 @@
-package communication
+package handler
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	gophmodel "gophkeep/internal/model"
 	"net/http"
-	"time"
 )
 
 func (env *ClientEnv) HandleDelete(metadata gophmodel.Metadata) (int, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := "/api/delete"
-
 	deleteData := gophmodel.DataToDelete{
 		StaticID: metadata.StaticID,
 		UserID:   metadata.UserID,
@@ -26,15 +18,7 @@ func (env *ClientEnv) HandleDelete(metadata gophmodel.Metadata) (int, error) {
 		return 0, err
 	}
 
-	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-	req.Header.Set("Content-Type", "application/json")
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeRequest(http.MethodPost, deletePath, body, true)
 	if err != nil {
 		return 0, err
 	}

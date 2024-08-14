@@ -1,21 +1,13 @@
-package communication
+package handler
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	gophmodel "gophkeep/internal/model"
 	"io"
 	"net/http"
-	"time"
 )
 
 func (env *ClientEnv) HandleEdit(metadata gophmodel.Metadata, newMetadata gophmodel.SimpleMetadata, data []byte) (int, gophmodel.Metadata, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := "/api/edit"
-
 	editData := gophmodel.EditData{
 		StaticID:    metadata.StaticID,
 		UserID:      metadata.UserID,
@@ -31,20 +23,12 @@ func (env *ClientEnv) HandleEdit(metadata gophmodel.Metadata, newMetadata gophmo
 	if err != nil {
 		return 0, fullMetadata, err
 	}
-
-	req, err := http.NewRequest("POST", baseURL+requestPath, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, fullMetadata, err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-	req.Header.Set("Content-Type", "application/json")
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeRequest(http.MethodPost, editPath, body, true)
 	if err != nil {
 		return 0, fullMetadata, err
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode == http.StatusOK {
 		bytes, err := io.ReadAll(response.Body)
 		if err != nil {
@@ -54,8 +38,6 @@ func (env *ClientEnv) HandleEdit(metadata gophmodel.Metadata, newMetadata gophmo
 		if err = json.Unmarshal(bytes, &fullMetadata); err != nil {
 			return 0, fullMetadata, err
 		}
-
-		return response.StatusCode, fullMetadata, nil
 	}
 	return response.StatusCode, fullMetadata, nil
 }

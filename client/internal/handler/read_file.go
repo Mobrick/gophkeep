@@ -1,22 +1,15 @@
-package communication
+package handler
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	gophmodel "gophkeep/internal/model"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 func (env ClientEnv) HandleReadFile(metadata gophmodel.Metadata) (int, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TimeoutSeconds)
-	defer cancel()
-	requestPath := "/api/readfile"
-
 	dataInfo := gophmodel.DataToRead{
 		StaticID: metadata.StaticID,
 		UserID:   metadata.UserID,
@@ -28,14 +21,7 @@ func (env ClientEnv) HandleReadFile(metadata gophmodel.Metadata) (int, string, e
 		return 0, "", err
 	}
 
-	req, err := http.NewRequest("GET", baseURL+requestPath, bytes.NewBuffer(body))
-	if err != nil {
-		return 0, "", err
-	}
-	req = req.WithContext(ctx)
-	req.AddCookie(env.authCookie)
-
-	response, err := env.httpClient.Do(req)
+	response, err := env.makeRequest(http.MethodGet, readPath, body, true)
 	if err != nil {
 		return 0, "", err
 	}
@@ -44,44 +30,53 @@ func (env ClientEnv) HandleReadFile(metadata gophmodel.Metadata) (int, string, e
 	if response.StatusCode != http.StatusOK {
 		return response.StatusCode, "", nil
 	}
-	var fileData gophmodel.FileData
 
-	bytes, err := io.ReadAll(response.Body)
+	filePath, err := makeFile(response.Body)
 	if err != nil {
 		return 0, "", err
+	}
+	return response.StatusCode, filePath, err
+}
+
+func makeFile(respBody io.ReadCloser) (string, error) {
+	var fileData gophmodel.FileData
+
+	bytes, err := io.ReadAll(respBody)
+	if err != nil {
+		return "", err
 	}
 
 	err = json.Unmarshal(bytes, &fileData)
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 
 	filePath := "/tmp/" + fileData.Name
 
 	err = os.MkdirAll(filepath.Dir(filePath), os.ModePerm)
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 
 	_, err = file.Write([]byte(fileData.Data))
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 
 	err = file.Close()
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 
 	path, err := os.Getwd()
 	if err != nil {
-		return 0, "", err
+		return "", err
 	}
 	filePath = filepath.Join(path, filePath)
-	return response.StatusCode, filePath, err
+	return filePath, nil
 }

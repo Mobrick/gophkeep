@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"gophkeep/client/internal/communication"
+	handler "gophkeep/client/internal/handler"
 	gophmodel "gophkeep/internal/model"
 	"log"
 	"net/http"
@@ -15,49 +15,63 @@ import (
 )
 
 type model struct {
-	width            int
-	height           int
-	currentStage     string
-	errorMessage     string
-	globalState      string
-	targetObjectName *string
-	outputData       *string
+	UI           ui
+	ClientEnv    *handler.ClientEnv
+	TargetObject *targetObject
+	NewData      *newData
 
-	loginInfo    gophmodel.SimpleAccountData
-	userMetadata *[]gophmodel.Metadata
-	textInput    textinput.Model
-	clientEnv    *communication.ClientEnv
+	stageState *stageState
 
-	targetObjectMetadata gophmodel.Metadata
-	targetObjectIndex    int
-	newMetadata          gophmodel.SimpleMetadata
-	loginAndPasswordData *gophmodel.LoginAndPasswordData
-	cardData             *gophmodel.CardData
-	filePath             *string
+	OutputData *string
+
+	UserMetadata *[]gophmodel.Metadata
+	TextInput    textinput.Model
 }
 
-type timerTickMsg time.Time
+type stageState struct {
+	nextStage    string
+	ErrorMessage string
+}
+
+type ui struct {
+	Width  int
+	Height int
+}
+
+type targetObject struct {
+	Metadata gophmodel.Metadata
+	Index    int
+	Name     string
+}
+
+type newData struct {
+	LoginInfo            gophmodel.SimpleAccountData
+	AuthType             string
+	Metadata             gophmodel.SimpleMetadata
+	LoginAndPasswordData gophmodel.LoginAndPasswordData
+	CardData             gophmodel.CardData
+	FilePath             string
+}
+
+type tickMsg time.Time
 
 func initialModel() model {
 	ti := textinput.New()
 	ti.Focus()
 	ti.CharLimit = 255
 	ti.Width = 255
-
-	objectName := ""
 	outputData := ""
-	path := ""
 
 	return model{
-		textInput:            ti,
-		errorMessage:         "",
-		clientEnv:            &communication.ClientEnv{},
-		userMetadata:         &[]gophmodel.Metadata{},
-		targetObjectName:     &objectName,
-		outputData:           &outputData,
-		loginAndPasswordData: &gophmodel.LoginAndPasswordData{},
-		cardData:             &gophmodel.CardData{},
-		filePath:             &path,
+		TextInput:    ti,
+		stageState:   &stageState{},
+		ClientEnv:    &handler.ClientEnv{},
+		UserMetadata: &[]gophmodel.Metadata{},
+
+		TargetObject: &targetObject{},
+		OutputData:   &outputData,
+
+		NewData: &newData{},
 	}
 }
 
@@ -70,8 +84,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.UI.Width = msg.Width
+		m.UI.Height = msg.Height
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -79,628 +93,781 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case startAppMsg:
 		{
-			m.currentStage = "PingServer"
-			return m, handlePingServer(m)
-		}
-	case stageCompleteMsg:
-		{
-			m.currentStage = msg.NextStageNameKey
-			m.errorMessage = msg.ErrorMessage
+			m.handlePingServer()
+			return m, cmd
 		}
 	}
 
-	switch m.currentStage {
+	switch m.stageState.nextStage {
 	case "PingFail":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "enter":
-				return m, handlePingServer(m)
-			}
-		}
+		return m.updatePingFail(msg, cmd)
 	case "SignInChoise":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "l":
-				m.currentStage = "LoginRegisterInputs"
-				m.globalState = "login"
-				m.textInput.Placeholder = "Enter your login here"
-				return m, cmd
-			case "r":
-				m.currentStage = "LoginRegisterInputs"
-				m.globalState = "register"
-				m.textInput.Placeholder = "Enter your new login here"
-				return m, cmd
-			}
-		}
+		return m.updateSignInChoise(msg, cmd)
 	case "LoginRegisterInputs":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "PasswordInput"
-				m.loginInfo.Login = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateLoginRegisterInputs(msg, cmd)
 	case "PasswordInput":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "Auth"
-				m.loginInfo.Password = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
-
+		return m.updatePasswordInput(msg, cmd)
 	case "Auth":
-		if m.globalState == "login" {
-			msg := handleLogin(m)
-			m.currentStage = msg.NextStageNameKey
-			m.errorMessage = msg.ErrorMessage
-			return m, cmd
-		}
-
-		if m.globalState == "register" {
-			msg := handleRegister(m)
-			m.currentStage = msg.NextStageNameKey
-			m.errorMessage = msg.ErrorMessage
-			return m, cmd
-		}
+		return m.updateAuth(cmd)
 	case "AuthFailed":
-		m.currentStage = "SignInChoise"
-		return m, cmd
+		return m.updateAuthFailed(cmd)
 	case "Sync":
-		msg := handleSync(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, tick()
+		return m.updateSync()
 	case "MainMenu":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				msg := handleMainMenuCommand(m)
-				m.textInput.SetValue("")
-				return m, msg
-			}
-		}
+		return m.updateMainMenu(msg, cmd)
 	case "Write":
-		m.currentStage = "WriteName"
-		return m, nil
+		return m.updateWrite()
 	case "WriteName":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.newMetadata.Name = m.textInput.Value()
-				if nameAlreadyExists(m, m.newMetadata.Name) {
-					m.errorMessage = "you already use that data name"
-					m.currentStage = "MainMenu"
-				} else {
-					m.currentStage = "WriteDescription"
-				}
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
-		return m, nil
+		return m.updateWriteName(msg, cmd)
 	case "WriteDescription":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "SelectDataType"
-				m.newMetadata.Description = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
-		return m, nil
+		return m.updateWriteDescription(msg, cmd)
 	case "SelectDataType":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "1":
-				m.currentStage = "WriteLogin"
-				m.newMetadata.DataType = "passwords"
-				return m, cmd
-			case "2":
-				m.currentStage = "WriteNumber"
-				m.newMetadata.DataType = "cards"
-				return m, cmd
-			case "3":
-				m.currentStage = "WriteFile"
-				m.newMetadata.DataType = "files"
-				return m, cmd
-				/* default:
-				m.currentStage = "MainMenu"
-				m.errorMessage = "wrong selected type"
-				return m, cmd*/
-			}
-		}
+		return m.updateSelectDataType(msg, cmd)
 	case "WriteFile":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteFileToServer"
-				*m.filePath = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteFile(msg, cmd)
 	case "EditFile":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditFileToServer"
-				*m.filePath = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditFile(msg, cmd)
 	case "WriteLogin":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WritePassword"
-				m.loginAndPasswordData.Login = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteLogin(msg, cmd)
 	case "WritePassword":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteToServer"
-				m.loginAndPasswordData.Password = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
-
+		return m.updateWritePassword(msg, cmd)
 	case "WriteNumber":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteCardholderName"
-				m.cardData.CardNumber = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteNumber(msg, cmd)
 	case "WriteCardholderName":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteExpirationDate"
-				m.cardData.CardholderName = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteCardholderName(msg, cmd)
 	case "WriteExpirationDate":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteCode"
-				m.cardData.ExpiredAt = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteExpirationDate(msg, cmd)
 	case "WriteCode":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "WriteToServer"
-				m.cardData.Code = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateWriteCode(msg, cmd)
 	case "WriteFileToServer":
-		msg := handleWriteFile(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
+		return m.updateWriteFileToServer(cmd)
 	case "EditFileToServer":
-		msg := handleEditFile(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
+		return m.updateEditFileToServer(cmd)
 	case "WriteToServer":
-		msg := handleWrite(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
-
+		return m.updateWriteToServer(cmd)
 	case "Edit":
-		m.targetObjectMetadata, m.targetObjectIndex = getMetadataByName(m)
-		if m.targetObjectIndex < 0 {
-			m.errorMessage = "no such name"
-			m.currentStage = "MainMenu"
-		}
-		m.currentStage = "EditDescription"
-		return m, nil
+		return m.updateEdit()
 	case "EditDescription":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				switch m.targetObjectMetadata.DataType {
-				case "passwords":
-					m.currentStage = "EditLogin"
-					m.newMetadata.Description = m.textInput.Value()
-					m.textInput.SetValue("")
-				case "cards":
-					m.currentStage = "EditNumber"
-					m.newMetadata.Description = m.textInput.Value()
-					m.textInput.SetValue("")
-				case "files":
-					m.currentStage = "EditFile"
-					m.newMetadata.Description = m.textInput.Value()
-					m.textInput.SetValue("")
-				}
-				return m, cmd
-			}
-		}
-		return m, nil
+		return m.updateEditDescription(msg, cmd)
 	case "EditLogin":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditPassword"
-				m.loginAndPasswordData.Login = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditLogin(msg, cmd)
 	case "EditPassword":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditToServer"
-				m.loginAndPasswordData.Password = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
-
+		return m.updateEditPassword(msg, cmd)
 	case "EditNumber":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditCardholderName"
-				m.cardData.CardNumber = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditNumber(msg, cmd)
 	case "EditCardholderName":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditExpirationDate"
-				m.cardData.CardholderName = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditCardholderName(msg, cmd)
 	case "EditExpirationDate":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditCode"
-				m.cardData.ExpiredAt = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditExpirationDate(msg, cmd)
 	case "EditCode":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.Type {
-			case tea.KeyRunes, tea.KeyBackspace:
-				m.textInput, cmd = m.textInput.Update(msg)
-				return m, cmd
-			}
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "EditToServer"
-				m.cardData.Code = m.textInput.Value()
-				m.textInput.SetValue("")
-				return m, cmd
-			}
-		}
+		return m.updateEditCode(msg, cmd)
 	case "EditToServer":
-		msg := handleEdit(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
+		return m.updateEditToServer(cmd)
 	case "DataSaved":
-		m.currentStage = "MainMenu"
-		return m, cmd
+		return m.updateDataSaved(cmd)
 	case "List":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "MainMenu"
-				return m, cmd
-			}
-		}
+		return m.updateList(msg, cmd)
 	case "Read":
-		msg := readHandle(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
+		return m.updateRead(cmd)
 	case "ReadComplete":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "MainMenu"
-				return m, cmd
-			}
-		}
+		return m.updateReadComplete(msg, cmd)
 	case "ReadFileComplete":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "MainMenu"
-				return m, cmd
-			}
-		}
+		return m.updateReadFileComplete(msg, cmd)
 	case "Delete":
-		msg := deleteHandle(m)
-		m.currentStage = msg.NextStageNameKey
-		m.errorMessage = msg.ErrorMessage
-		return m, cmd
+		return m.updateDelete(cmd)
 	case "DeleteComplete":
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "enter":
-				m.currentStage = "MainMenu"
-				return m, cmd
-			}
-		}
+		return m.updateDeleteComplete(msg, cmd)
 	}
 
 	return m, tick()
 }
 
+func (m model) updateDeleteComplete(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "MainMenu"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateDelete(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.deleteHandle()
+	return m, cmd
+}
+
+func (m model) updateReadFileComplete(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "MainMenu"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateReadComplete(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "MainMenu"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateRead(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.readHandle()
+	return m, cmd
+}
+
+func (m model) updateList(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "MainMenu"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateDataSaved(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.stageState.nextStage = "MainMenu"
+	return m, cmd
+}
+
+func (m model) updateEditToServer(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.handleEdit()
+	return m, cmd
+}
+
+func (m model) updateEditCode(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditToServer"
+			m.NewData.CardData.Code = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditExpirationDate(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditCode"
+			m.NewData.CardData.ExpiredAt = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditCardholderName(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditExpirationDate"
+			m.NewData.CardData.CardholderName = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditNumber(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditCardholderName"
+			m.NewData.CardData.CardNumber = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditPassword(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditToServer"
+			m.NewData.LoginAndPasswordData.Password = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditLogin(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditPassword"
+			m.NewData.LoginAndPasswordData.Login = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditDescription(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			switch m.TargetObject.Metadata.DataType {
+			case "passwords":
+				m.stageState.nextStage = "EditLogin"
+				m.NewData.Metadata.Description = m.TextInput.Value()
+				m.TextInput.SetValue("")
+			case "cards":
+				m.stageState.nextStage = "EditNumber"
+				m.NewData.Metadata.Description = m.TextInput.Value()
+				m.TextInput.SetValue("")
+			case "files":
+				m.stageState.nextStage = "EditFile"
+				m.NewData.Metadata.Description = m.TextInput.Value()
+				m.TextInput.SetValue("")
+			}
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
+func (m model) updateEdit() (tea.Model, tea.Cmd) {
+	m.TargetObject.Metadata, m.TargetObject.Index = getMetadataByName(m)
+	if m.TargetObject.Index < 0 {
+		m.stageState.ErrorMessage = "no such name"
+		m.stageState.nextStage = "MainMenu"
+	}
+	m.stageState.nextStage = "EditDescription"
+	return m, nil
+}
+
+func (m model) updateWriteToServer(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.handleWrite()
+	return m, cmd
+}
+
+func (m model) updateEditFileToServer(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.handleEditFile()
+	return m, cmd
+}
+
+func (m model) updateWriteFileToServer(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.handleWriteFile()
+	return m, cmd
+}
+
+func (m model) updateWriteCode(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteToServer"
+			m.NewData.CardData.Code = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateWriteExpirationDate(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteCode"
+			m.NewData.CardData.ExpiredAt = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+
+	return m, cmd
+}
+
+func (m model) updateWriteCardholderName(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteExpirationDate"
+			m.NewData.CardData.CardholderName = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+
+	return m, cmd
+}
+
+func (m model) updateWriteNumber(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteCardholderName"
+			m.NewData.CardData.CardNumber = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateWritePassword(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteToServer"
+			m.NewData.LoginAndPasswordData.Password = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateWriteLogin(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WritePassword"
+			m.NewData.LoginAndPasswordData.Login = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateEditFile(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "EditFileToServer"
+			m.NewData.FilePath = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateWriteFile(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "WriteFileToServer"
+			m.NewData.FilePath = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateSelectDataType(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "1":
+			m.stageState.nextStage = "WriteLogin"
+			m.NewData.Metadata.DataType = "passwords"
+			return m, cmd
+		case "2":
+			m.stageState.nextStage = "WriteNumber"
+			m.NewData.Metadata.DataType = "cards"
+			return m, cmd
+		case "3":
+			m.stageState.nextStage = "WriteFile"
+			m.NewData.Metadata.DataType = "files"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateWriteDescription(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "SelectDataType"
+			m.NewData.Metadata.Description = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
+func (m model) updateWriteName(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.NewData.Metadata.Name = m.TextInput.Value()
+			if nameAlreadyExists(m, m.NewData.Metadata.Name) {
+				m.stageState.ErrorMessage = "you already use that data name"
+				m.stageState.nextStage = "MainMenu"
+			} else {
+				m.stageState.nextStage = "WriteDescription"
+			}
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
+func (m model) updateWrite() (tea.Model, tea.Cmd) {
+	m.stageState.nextStage = "WriteName"
+	return m, nil
+}
+
+func (m model) updateMainMenu(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			msg := handleMainMenuCommand(m)
+			m.TextInput.SetValue("")
+			return m, msg
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateSync() (tea.Model, tea.Cmd) {
+	m.handleSync()
+	return m, tick()
+}
+
+func (m model) updateAuthFailed(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	m.stageState.nextStage = "SignInChoise"
+	return m, cmd
+}
+
+func (m model) updateAuth(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	if m.NewData.AuthType == "login" {
+		m.handleLogin()
+		return m, cmd
+	}
+
+	if m.NewData.AuthType == "register" {
+		m.handleRegister()
+		return m, cmd
+	}
+	return m, cmd
+}
+
+func (m model) updatePasswordInput(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "Auth"
+			m.NewData.LoginInfo.Password = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateLoginRegisterInputs(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyRunes, tea.KeyBackspace:
+			m.TextInput, cmd = m.TextInput.Update(msg)
+			return m, cmd
+		}
+		switch msg.String() {
+		case "enter":
+			m.stageState.nextStage = "PasswordInput"
+			m.NewData.LoginInfo.Login = m.TextInput.Value()
+			m.TextInput.SetValue("")
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updateSignInChoise(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "l":
+			m.stageState.nextStage = "LoginRegisterInputs"
+			m.NewData.AuthType = "login"
+			m.TextInput.Placeholder = "Enter your login here"
+			return m, cmd
+		case "r":
+			m.stageState.nextStage = "LoginRegisterInputs"
+			m.NewData.AuthType = "register"
+			m.TextInput.Placeholder = "Enter your new login here"
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
+func (m model) updatePingFail(msg tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.handlePingServer()
+			return m, cmd
+		}
+	}
+	return m, cmd
+}
+
 func (m model) View() string {
 	var s string
-	switch m.currentStage {
+	switch m.stageState.nextStage {
 	case "PingServer":
 		s = "Connecting to server"
 	case "SignInChoise":
 		s = "type 'l' or 'r' to login or register"
-		if len(m.errorMessage) != 0 {
-			s = m.errorMessage + "\n" + s
+		if len(m.stageState.ErrorMessage) != 0 {
+			s = m.stageState.ErrorMessage + "\n" + s
 		}
 	case "PingFail":
-		s = m.errorMessage + "\n Could not connect to the server" +
+		s = m.stageState.ErrorMessage + "\n Could not connect to the server" +
 			"\n Press Enter to retry"
 
 	case "LoginRegisterInputs":
 		return fmt.Sprintf(
 			"Input your login:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "PasswordInput":
-		m.textInput.Placeholder = "Password"
-		m.textInput.EchoMode = textinput.EchoPassword
-		m.textInput.EchoCharacter = '*'
+		m.TextInput.Placeholder = "Password"
+		m.TextInput.EchoMode = textinput.EchoPassword
+		m.TextInput.EchoCharacter = '*'
 		return fmt.Sprintf(
 			"Input your password: \n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "Sync":
 		s = "Loading data from server"
 	case "MainMenu":
 		errorMessage := ""
-		if len(m.errorMessage) != 0 {
-			errorMessage = m.errorMessage + "\n\n"
+		if len(m.stageState.ErrorMessage) != 0 {
+			errorMessage = m.stageState.ErrorMessage + "\n\n"
 		}
-		m.textInput.Placeholder = "Type command here"
+		m.TextInput.Placeholder = "Type command here"
 		s = errorMessage + "Menu\n\n" + "type:\n\nread <name> to read your saved data" +
 			"\n\nwrite to add new data" +
 			"\n\nlist to view all names and descriptions of your data" +
 			"\n\ndelete <name> to delete data" +
-			"\n\nedit <name> to edit data \n\n" + m.textInput.View()
+			"\n\nedit <name> to edit data \n\n" + m.TextInput.View()
 	case "WriteName":
-		m.textInput.Placeholder = "Name"
+		m.TextInput.Placeholder = "Name"
 		return fmt.Sprintf(
 			"Input name of the data:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteDescription":
-		m.textInput.Placeholder = "Description"
+		m.TextInput.Placeholder = "Description"
 		return fmt.Sprintf(
 			"Input description of the data:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "EditDescription":
-		m.textInput.Placeholder = "Description"
+		m.TextInput.Placeholder = "Description"
 		return fmt.Sprintf(
 			"Input new description of the data:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "SelectDataType":
 		s = "press '1' to add login and password data or press '2' to add card data or '3' to add file"
 	case "WriteLogin", "EditLogin":
 		return fmt.Sprintf(
 			"Input login:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WritePassword", "EditPassword":
-		m.textInput.Placeholder = "Password"
-		m.textInput.EchoMode = textinput.EchoPassword
-		m.textInput.EchoCharacter = '*'
+		m.TextInput.Placeholder = "Password"
+		m.TextInput.EchoMode = textinput.EchoPassword
+		m.TextInput.EchoCharacter = '*'
 		return fmt.Sprintf(
 			"Input password:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteNumber", "EditNumber":
 		return fmt.Sprintf(
 			"Input number: \n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteCardholderName", "EditCardholderName":
 		return fmt.Sprintf(
 			"Input cardholder name:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteExpirationDate", "EditExpirationDate":
 		return fmt.Sprintf(
 			"Input expiration date:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteCode", "EditCode":
 		return fmt.Sprintf(
 			"Input code:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "WriteFile":
-		m.textInput.Placeholder = "File path"
+		m.TextInput.Placeholder = "File path"
 		return fmt.Sprintf(
 			"Input file path:\n\n%s\n\n",
-			m.textInput.View(),
+			m.TextInput.View(),
 		) + "\n"
 	case "EditToServer":
 		s = "writing to server"
 	case "DataSaved":
 		s = "Data added"
 	case "List":
-		s = drawList(m)
+		s = m.drawList()
 	case "Read":
 		s = "Reading"
 	case "ReadComplete":
 		s = fmt.Sprintf(
 			"Your data:\n\n%s\n\n",
-			*m.outputData,
+			*m.OutputData,
 		) + "\n"
 	case "ReadFileComplete":
 		s = fmt.Sprintf(
 			"Path to file:\n\n%s\n\n",
-			*m.outputData,
+			*m.OutputData,
 		) + "\n"
 	case "Delete":
 		s = "Deletion"
@@ -722,238 +889,211 @@ type stageCompleteMsg struct {
 	ErrorMessage     string
 }
 
-func handleLogin(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-	status, err := m.clientEnv.HandleLogin(m.loginInfo)
+func (m model) handleLogin() {
+	status, err := m.ClientEnv.HandleLogin(m.NewData.LoginInfo)
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "AuthFailed"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "AuthFailed"
+		return
 	}
 	if status == http.StatusUnauthorized {
-		msg.ErrorMessage = "no such login and password pair found"
-		msg.NextStageNameKey = "AuthFailed"
-		return msg
+		m.stageState.ErrorMessage = "no such login and password pair found"
+		m.stageState.nextStage = "AuthFailed"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "Sync"
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "Sync"
+		return
 	}
-	msg.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
-	msg.NextStageNameKey = "AuthFailed"
-	return msg
+	m.stageState.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
+	m.stageState.nextStage = "AuthFailed"
 }
 
-func handleRegister(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-	status, err := m.clientEnv.HandleRegister(m.loginInfo)
+func (m model) handleRegister() {
+	status, err := m.ClientEnv.HandleRegister(m.NewData.LoginInfo)
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "AuthFailed"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "AuthFailed"
+		return
 	}
 	if status == http.StatusConflict {
-		msg.ErrorMessage = "login alredy in use"
-		msg.NextStageNameKey = "AuthFailed"
-		return msg
+		m.stageState.ErrorMessage = "login alredy in use"
+		m.stageState.nextStage = "AuthFailed"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "AuthSuccess"
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "AuthSuccess"
+		return
 	}
-	msg.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
-	msg.NextStageNameKey = "AuthFailed"
-	return msg
+	m.stageState.ErrorMessage = "server error, unexpected status: " + fmt.Sprint(status)
+	m.stageState.nextStage = "AuthFailed"
 }
 
-func handlePingServer(m model) tea.Cmd {
-	return func() tea.Msg {
-		status, err := m.clientEnv.HandlePingServer()
-		var msg stageCompleteMsg
-		if err != nil {
-			msg.ErrorMessage = err.Error()
-			msg.NextStageNameKey = "PingFail"
-			return msg
-		}
-		if status != http.StatusOK {
-			msg.ErrorMessage = "status is not OK, it is: " + fmt.Sprint(status)
-			msg.NextStageNameKey = "PingFail"
-			return msg
-		}
-		if status == http.StatusOK {
-			msg.ErrorMessage = ""
-			msg.NextStageNameKey = "SignInChoise"
-			return msg
-		}
-		return msg
-	}
-}
-
-func handleSync(m model) stageCompleteMsg {
-	status, userMetadata, err := m.clientEnv.HandleSync()
-	*m.userMetadata = userMetadata
-
-	var msg stageCompleteMsg
+func (m model) handlePingServer() {
+	status, err := m.ClientEnv.HandlePingServer()
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "SyncFail"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "PingFail"
+		return
 	}
-	if status == http.StatusNoContent {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+	if status != http.StatusOK {
+		m.stageState.ErrorMessage = "status is not OK, it is: " + fmt.Sprint(status)
+		m.stageState.nextStage = "PingFail"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "SignInChoise"
+		return
 	}
-	return msg
+}
+
+func (m model) handleSync() {
+	status, userMetadata, err := m.ClientEnv.HandleSync()
+	*m.UserMetadata = userMetadata
+
+	if err != nil {
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "SyncFail"
+		return
+	}
+	if status == http.StatusNoContent || status == http.StatusOK {
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "MainMenu"
+		return
+	}
 }
 
 func handleMainMenuCommand(m model) tea.Cmd {
 	return func() tea.Msg {
 		var msg stageCompleteMsg
-		command := m.textInput.Value()
+		command := m.TextInput.Value()
 		commandSlice := strings.Fields(command)
 		switch len(commandSlice) {
 		case 0:
-			msg.ErrorMessage = "command didn't have any words"
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = "command didn't have any words"
+			m.stageState.nextStage = "MainMenu"
 		case 1:
 			switch commandSlice[0] {
 			case "write":
-				msg.ErrorMessage = ""
-				msg.NextStageNameKey = "Write"
+				m.stageState.ErrorMessage = ""
+				m.stageState.nextStage = "Write"
 			case "list":
-				msg.ErrorMessage = ""
-				msg.NextStageNameKey = "List"
+				m.stageState.ErrorMessage = ""
+				m.stageState.nextStage = "List"
 			default:
-				msg.ErrorMessage = "Unknown command"
-				msg.NextStageNameKey = "MainMenu"
+				m.stageState.ErrorMessage = "Unknown command"
+				m.stageState.nextStage = "MainMenu"
 			}
 		case 2:
 			switch commandSlice[0] {
 			case "read":
-				msg.ErrorMessage = ""
-				msg.NextStageNameKey = "Read"
+				m.stageState.ErrorMessage = ""
+				m.stageState.nextStage = "Read"
 			case "delete":
-				msg.ErrorMessage = ""
-				msg.NextStageNameKey = "Delete"
+				m.stageState.ErrorMessage = ""
+				m.stageState.nextStage = "Delete"
 			case "edit":
-				msg.ErrorMessage = ""
-				msg.NextStageNameKey = "Edit"
+				m.stageState.ErrorMessage = ""
+				m.stageState.nextStage = "Edit"
 			default:
-				msg.ErrorMessage = "Unknown command"
-				msg.NextStageNameKey = "MainMenu"
+				m.stageState.ErrorMessage = "Unknown command"
+				m.stageState.nextStage = "MainMenu"
 			}
-			*m.targetObjectName = commandSlice[1]
+			m.TargetObject.Name = commandSlice[1]
 		default:
-			msg.ErrorMessage = "Unknown command"
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = "Unknown command"
+			m.stageState.nextStage = "MainMenu"
 		}
 		return msg
 	}
 }
 
-func handleWrite(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
+func (m model) handleWrite() {
 	var data []byte
 
-	switch m.newMetadata.DataType {
+	switch m.NewData.Metadata.DataType {
 	case "passwords":
-		bytes, err := json.Marshal(m.loginAndPasswordData)
-		m.loginAndPasswordData = &gophmodel.LoginAndPasswordData{}
+		bytes, err := json.Marshal(m.NewData.LoginAndPasswordData)
+		m.NewData.LoginAndPasswordData = gophmodel.LoginAndPasswordData{}
 		if err != nil {
-			msg.ErrorMessage = err.Error()
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = err.Error()
+			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
 
 	case "cards":
-		bytes, err := json.Marshal(m.cardData)
-		m.cardData = &gophmodel.CardData{}
+		bytes, err := json.Marshal(m.NewData.CardData)
+		m.NewData.CardData = gophmodel.CardData{}
 		if err != nil {
-			msg.ErrorMessage = err.Error()
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = err.Error()
+			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
 	}
 
-	status, metadata, err := m.clientEnv.HandleWrite(m.newMetadata, data)
+	status, metadata, err := m.ClientEnv.HandleWrite(m.NewData.Metadata, data)
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "DataSaved"
-		*m.userMetadata = append(*m.userMetadata, metadata)
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "DataSaved"
+		*m.UserMetadata = append(*m.UserMetadata, metadata)
+		return
 	}
 	if status != http.StatusOK {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
-
-	return msg
 }
 
-func handleWriteFile(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
-	status, metadata, err := m.clientEnv.HandleWriteFile(m.newMetadata, []byte(*m.filePath))
+func (m model) handleWriteFile() {
+	status, metadata, err := m.ClientEnv.HandleWriteFile(m.NewData.Metadata, []byte(m.NewData.FilePath))
 
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "DataSaved"
-		*m.userMetadata = append(*m.userMetadata, metadata)
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "DataSaved"
+		*m.UserMetadata = append(*m.UserMetadata, metadata)
+		return
 	}
 	if status != http.StatusOK {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
-
-	return msg
 }
 
-func handleEditFile(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
+func (m model) handleEditFile() {
+	metadataToEdit := m.TargetObject.Metadata
 
-	metadataToEdit := m.targetObjectMetadata
-
-	status, metadata, err := m.clientEnv.HandleEditFile(metadataToEdit, m.newMetadata, []byte(*m.filePath))
+	status, metadata, err := m.ClientEnv.HandleEditFile(metadataToEdit, m.NewData.Metadata, []byte(m.NewData.FilePath))
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "DataSaved"
-		(*m.userMetadata)[m.targetObjectIndex] = metadata
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "DataSaved"
+		(*m.UserMetadata)[m.TargetObject.Index] = metadata
+		return
 	}
 	if status != http.StatusOK {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
-
-	return msg
 }
 
 func getMetadataByName(m model) (gophmodel.Metadata, int) {
@@ -961,8 +1101,8 @@ func getMetadataByName(m model) (gophmodel.Metadata, int) {
 
 	metadataIndex := -1
 
-	for i, metadata := range *m.userMetadata {
-		if metadata.Name == *m.targetObjectName {
+	for i, metadata := range *m.UserMetadata {
+		if metadata.Name == m.TargetObject.Name {
 			metadataToEdit = metadata
 			metadataIndex = i
 		}
@@ -971,7 +1111,7 @@ func getMetadataByName(m model) (gophmodel.Metadata, int) {
 }
 
 func nameAlreadyExists(m model, name string) bool {
-	for _, metadata := range *m.userMetadata {
+	for _, metadata := range *m.UserMetadata {
 		if metadata.Name == name {
 			return true
 		}
@@ -979,57 +1119,53 @@ func nameAlreadyExists(m model, name string) bool {
 	return false
 }
 
-func handleEdit(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
-	metadataToEdit := m.targetObjectMetadata
+func (m model) handleEdit() {
+	metadataToEdit := m.TargetObject.Metadata
 
 	var data []byte
 
 	switch metadataToEdit.DataType {
 	case "passwords":
-		bytes, err := json.Marshal(m.loginAndPasswordData)
-		m.loginAndPasswordData = &gophmodel.LoginAndPasswordData{}
+		bytes, err := json.Marshal(m.NewData.LoginAndPasswordData)
+		m.NewData.LoginAndPasswordData = gophmodel.LoginAndPasswordData{}
 		if err != nil {
-			msg.ErrorMessage = err.Error()
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = err.Error()
+			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
 	case "cards":
-		bytes, err := json.Marshal(m.cardData)
-		m.cardData = &gophmodel.CardData{}
+		bytes, err := json.Marshal(m.NewData.CardData)
+		m.NewData.CardData = gophmodel.CardData{}
 		if err != nil {
-			msg.ErrorMessage = err.Error()
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = err.Error()
+			m.stageState.nextStage = "MainMenu"
 		}
 		data = bytes
 	}
 
-	status, metadata, err := m.clientEnv.HandleEdit(metadataToEdit, m.newMetadata, data)
+	status, metadata, err := m.ClientEnv.HandleEdit(metadataToEdit, m.NewData.Metadata, data)
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "DataSaved"
-		(*m.userMetadata)[m.targetObjectIndex] = metadata
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "DataSaved"
+		(*m.UserMetadata)[m.TargetObject.Index] = metadata
+		return
 	}
 	if status != http.StatusOK {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
-
-	return msg
 }
 
-func drawList(m model) string {
+func (m model) drawList() string {
 	var sb strings.Builder
 	sb.WriteString("Name, Description, Data Type, Changed, Created\n\n")
-	info := *m.userMetadata
+	info := *m.UserMetadata
 	count := len(info)
 	for i := 0; i < count; i++ {
 		sb.WriteString(fmt.Sprintf("Name: %s , Description: %s , Data Type: %s , Changed: %s , Created: %s\n\n",
@@ -1043,125 +1179,119 @@ func drawList(m model) string {
 	return sb.String()
 }
 
-func readHandle(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
+func (m model) readHandle() {
 	var metadataToRead gophmodel.Metadata
 
-	for _, metadata := range *m.userMetadata {
-		if metadata.Name == *m.targetObjectName {
+	for _, metadata := range *m.UserMetadata {
+		if metadata.Name == m.TargetObject.Name {
 			metadataToRead = metadata
 		}
 	}
 
 	if metadataToRead == (gophmodel.Metadata{}) {
-		msg.ErrorMessage = "no such name"
-		msg.NextStageNameKey = "MainMenu"
+		m.stageState.ErrorMessage = "no such name"
+		m.stageState.nextStage = "MainMenu"
 	}
 
 	if metadataToRead.DataType == "files" {
-		status, filePath, err := m.clientEnv.HandleReadFile(metadataToRead)
+		status, filePath, err := m.ClientEnv.HandleReadFile(metadataToRead)
 		if err != nil {
-			msg.ErrorMessage = "Could not request file " + err.Error()
-			msg.NextStageNameKey = "MainMenu"
-			return msg
+			m.stageState.ErrorMessage = "Could not request file " + err.Error()
+			m.stageState.nextStage = "MainMenu"
+			return
 		}
 		if status != http.StatusOK {
-			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-			msg.NextStageNameKey = "MainMenu"
-			return msg
+			m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			m.stageState.nextStage = "MainMenu"
+			return
 		}
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "ReadFileComplete"
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "ReadFileComplete"
 
-		*m.outputData = string(filePath)
+		*m.OutputData = string(filePath)
 
-		return msg
+		return
 	} else {
-		status, data, err := m.clientEnv.HandleRead(metadataToRead)
+		status, data, err := m.ClientEnv.HandleRead(metadataToRead)
 		if err != nil {
-			msg.ErrorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
-			msg.NextStageNameKey = "MainMenu"
-			return msg
+			m.stageState.ErrorMessage = "Could not request data: " + metadataToRead.StaticID + " " + err.Error()
+			m.stageState.nextStage = "MainMenu"
+			return
 		}
 		if status != http.StatusOK {
-			msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-			msg.NextStageNameKey = "MainMenu"
-			return msg
+			m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+			m.stageState.nextStage = "MainMenu"
+			return
 		}
 		if metadataToRead.DataType == "cards" {
 			var cardData gophmodel.CardData
 
 			if err = json.Unmarshal(data, &cardData); err != nil {
-				msg.ErrorMessage = "could not unmarshal JSON"
-				msg.NextStageNameKey = "MainMenu"
+				m.stageState.ErrorMessage = "could not unmarshal JSON"
+				m.stageState.nextStage = "MainMenu"
 			}
 
 			s := fmt.Sprintf("Number: %s Card holder: %s\n\nExpiry date: %s Code: %s", cardData.CardNumber, cardData.CardholderName, cardData.ExpiredAt, cardData.Code)
 
-			*m.outputData = string(s)
+			*m.OutputData = string(s)
 		} else if metadataToRead.DataType == "passwords" {
 			var password gophmodel.LoginAndPasswordData
 
 			if err = json.Unmarshal(data, &password); err != nil {
-				msg.ErrorMessage = "could not unmarshal JSON"
-				msg.NextStageNameKey = "MainMenu"
+				m.stageState.ErrorMessage = "could not unmarshal JSON"
+				m.stageState.nextStage = "MainMenu"
 			}
 
 			s := fmt.Sprintf("Login: %s\nPassword: %s", password.Login, password.Password)
 
-			*m.outputData = string(s)
+			*m.OutputData = string(s)
 		} else {
-			msg.ErrorMessage = "Could not find data of this datatype: " + metadataToRead.DataType
-			msg.NextStageNameKey = "MainMenu"
+			m.stageState.ErrorMessage = "Could not find data of this datatype: " + metadataToRead.DataType
+			m.stageState.nextStage = "MainMenu"
 		}
 
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "ReadComplete"
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "ReadComplete"
 
-		return msg
+		return
 	}
 }
 
-func deleteHandle(m model) stageCompleteMsg {
-	var msg stageCompleteMsg
-
+func (m model) deleteHandle() {
 	var metadataToDelete gophmodel.Metadata
 
 	deleteIndex := -1
 
-	for i, metadata := range *m.userMetadata {
-		if metadata.Name == *m.targetObjectName {
+	for i, metadata := range *m.UserMetadata {
+		if metadata.Name == m.TargetObject.Name {
 			metadataToDelete = metadata
 			deleteIndex = i
 		}
 	}
 
 	if deleteIndex == -1 || metadataToDelete == (gophmodel.Metadata{}) {
-		msg.ErrorMessage = "no such name"
-		msg.NextStageNameKey = "MainMenu"
+		m.stageState.ErrorMessage = "no such name"
+		m.stageState.nextStage = "MainMenu"
 	}
 
-	status, err := m.clientEnv.HandleDelete(metadataToDelete)
+	status, err := m.ClientEnv.HandleDelete(metadataToDelete)
 	if err != nil {
-		msg.ErrorMessage = err.Error()
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = err.Error()
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 	if status != http.StatusOK {
-		msg.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
-		msg.NextStageNameKey = "MainMenu"
-		return msg
+		m.stageState.ErrorMessage = "Something went wrong with status: " + fmt.Sprint(status)
+		m.stageState.nextStage = "MainMenu"
+		return
 	}
 
 	if status == http.StatusOK {
-		msg.ErrorMessage = ""
-		msg.NextStageNameKey = "DeleteComplete"
-		(*m.userMetadata) = append((*m.userMetadata)[:deleteIndex], (*m.userMetadata)[deleteIndex+1:]...)
-		return msg
+		m.stageState.ErrorMessage = ""
+		m.stageState.nextStage = "DeleteComplete"
+		(*m.UserMetadata) = append((*m.UserMetadata)[:deleteIndex], (*m.UserMetadata)[deleteIndex+1:]...)
+		return
 	}
-
-	return msg
 }
 
 func main() {
@@ -1178,6 +1308,6 @@ func main() {
 
 func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return timerTickMsg(t)
+		return tickMsg(t)
 	})
 }
