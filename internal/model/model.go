@@ -39,9 +39,16 @@ type CardData struct {
 	Code           string `json:"code"`
 }
 
+type FileData struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	Data string `json:"data"`
+}
+
 type SimpleMetadata struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	DataType    string `json:"data_type"`
 }
 
 type DataToDelete struct {
@@ -68,4 +75,9 @@ type EditData struct {
 	Data        string `json:"data"`
 	StaticID    string `json:"static_id"`
 	UserID      string `json:"user_id"`
+}
+
+type TestFileData struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }

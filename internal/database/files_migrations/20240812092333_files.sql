@@ -1,8 +1,8 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE IF NOT EXISTS cards(
+CREATE TABLE IF NOT EXISTS files(
     id    TEXT PRIMARY KEY,
-	data  TEXT NOT NULL,
+	data  VARCHAR NOT NULL,
     sk    TEXT NOT NULL
     );
 -- +goose StatementEnd

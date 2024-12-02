@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-func (env Env) ReadHandle(res http.ResponseWriter, req *http.Request) {
+func (env Env) ReadFileHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	userID := ctx.Value(auth.KeyUserID).(string)
 
@@ -41,19 +41,7 @@ func (env Env) ReadHandle(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	readResponse := model.ReadResponse{
-		StaticID: readData.StaticID,
-		Data:     data,
-	}
-
-	resp, err := json.Marshal(readResponse)
-	if err != nil {
-		logger.Log.Debug("could not marshal response")
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	res.Header().Set("Content-Type", "application/json")
+	res.Header().Set("Content-Type", "application/octet-stream")
 	res.WriteHeader(http.StatusOK)
-	res.Write([]byte(resp))
+	res.Write([]byte(data))
 }

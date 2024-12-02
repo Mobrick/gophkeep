@@ -6,13 +6,14 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/golang-jwt/jwt/v4"
 )
 
 const (
 	dataKeyLength = 16
-	fileWithKey   = "internal/sk/encryption.txt"
+	fileWithKey   = "sk/encryption.txt"
 )
 
 type Claims struct {
@@ -20,33 +21,34 @@ type Claims struct {
 	Data string
 }
 
-// эти методы перенести в другой пакет
-func GenerateSK(data string) (string, error) {
+func GenerateSK(data string) (string, string, error) {
 	var newKey string
 
 	if len(data) <= 0 {
-		return "", errors.New("expected length is not valid")
+		return "", "", errors.New("expected length is not valid")
 	}
 
 	hash := make([]byte, dataKeyLength)
 	_, err := rand.Read(hash)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	encodedHash := base64.StdEncoding.EncodeToString(hash)
 	newKey = encodedHash[:dataKeyLength]
 
-	encryptionSK, err := getEncryptionKeyFromFile(fileWithKey)
+	path := filepath.FromSlash(fileWithKey)
+
+	encryptionSK, err := getEncryptionKeyFromFile(path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	encryptedDataSK, err := buildJWTString(encryptionSK, newKey)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return encryptedDataSK, nil
+	return encryptedDataSK, newKey, nil
 }
 
 func EncryptSimpleData(sk string, data string) (string, error) {
@@ -55,7 +57,7 @@ func EncryptSimpleData(sk string, data string) (string, error) {
 
 func DecryptData(dataSK string, encryptedData string) (string, error) {
 	realDataSk, err := decryptDataSK(dataSK)
-	
+
 	if err != nil {
 		return "", err
 	}

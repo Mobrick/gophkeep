@@ -7,28 +7,46 @@ import (
 	"gophkeep/internal/encryption"
 	"gophkeep/internal/logger"
 	"gophkeep/internal/model"
+	"io"
 	"net/http"
 
 	"github.com/google/uuid"
 )
 
-func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
+func (env Env) KeepFileHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	userID := ctx.Value(auth.KeyUserID).(string)
-	
-	var initialData model.InitialData
-	var buf bytes.Buffer
 
-	// читаем тело запроса
-	_, err := buf.ReadFrom(req.Body)
+	var initialData model.InitialData
+
+	req.ParseMultipartForm(2097152)
+
+	metadataJson := req.FormValue("metadata")
+	file, header, err := req.FormFile("file")
 	if err != nil {
+		logger.Log.Info("could not take file")
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err = json.Unmarshal(buf.Bytes(), &initialData); err != nil {
-		logger.Log.Info("could not unmarshal initial data")
+	buf := bytes.NewBuffer(nil)
+
+	if _, err := io.Copy(buf, file); err != nil {
+		logger.Log.Info("could not read file")
 		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fileData := model.FileData{
+		Name: header.Filename,
+		Size: header.Size,
+		Data: buf.String(),
+	}
+
+	fileJSON, err := json.Marshal(fileData)
+	if err != nil {
+		logger.Log.Debug("could not marshal response")
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -40,13 +58,20 @@ func (env Env) KeepHandle(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var metadata model.Metadata
-
-	metadata, err = StorageData(ctx, initialData, userID, env, realSK, encryptedSK, initialData.Data)
-	if err != nil {
+	if err = json.Unmarshal([]byte(metadataJson), &initialData); err != nil {
+		logger.Log.Info("could not unmarshal initial data")
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	metadata, err := StorageData(ctx, initialData, userID, env, realSK, encryptedSK, string(fileJSON))
+	if err != nil {
+		logger.Log.Info("could not keep file data")
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	defer file.Close()
 
 	resp, err := json.Marshal(metadata)
 	if err != nil {

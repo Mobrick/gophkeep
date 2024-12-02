@@ -7,15 +7,11 @@ import (
 	"net/http"
 )
 
-func (env Env) ListHandle(res http.ResponseWriter, req *http.Request) {
+func (env Env) SyncHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	userID, ok := auth.CookieIsValid(req)
-	if !ok {
-		res.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	userID := ctx.Value(auth.KeyUserID).(string)
 
-	metadata, err := env.Storage.GetSimpleMetadataByUserID(ctx, userID)
+	metadata, err := env.Storage.GetMetadataByUserID(ctx, userID)
 	if err != nil {
 		logger.Log.Debug("could not get urls by user id")
 		http.Error(res, err.Error(), http.StatusInternalServerError)
@@ -23,7 +19,7 @@ func (env Env) ListHandle(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if len(metadata) == 0 {
-		res.WriteHeader(http.StatusUnauthorized)
+		res.WriteHeader(http.StatusNoContent)
 		return
 	}
 

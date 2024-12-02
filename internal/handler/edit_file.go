@@ -7,26 +7,48 @@ import (
 	"gophkeep/internal/encryption"
 	"gophkeep/internal/logger"
 	"gophkeep/internal/model"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-func (env Env) EditHandle(res http.ResponseWriter, req *http.Request) {
+func (env Env) EditFileHandle(res http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	userID := ctx.Value(auth.KeyUserID).(string)
 
 	var editData model.EditData
-	var buf bytes.Buffer
+	req.ParseMultipartForm(2097152)
 
-	// читаем тело запроса
-	_, err := buf.ReadFrom(req.Body)
+	metadataJson := req.FormValue("metadata")
+	file, header, err := req.FormFile("file")
 	if err != nil {
+		logger.Log.Info("could not take file")
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	buf := bytes.NewBuffer(nil)
+
+	if _, err := io.Copy(buf, file); err != nil {
+		logger.Log.Info("could not read file")
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fileData := model.FileData{
+		Name: header.Filename,
+		Size: header.Size,
+		Data: buf.String(),
+	}
+
+	fileJSON, err := json.Marshal(fileData)
+	if err != nil {
+		logger.Log.Debug("could not marshal response")
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	// создаем и шифруем этот ключ ключом шифрования
 	encryptedSK, realSK, err := encryption.GenerateSK(uuid.NewString())
 	if err != nil {
@@ -35,13 +57,13 @@ func (env Env) EditHandle(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err = json.Unmarshal(buf.Bytes(), &editData); err != nil {
+	if err = json.Unmarshal([]byte(metadataJson), &editData); err != nil {
 		logger.Log.Info("could not unmarshal initial data")
 		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	encryptedData, err := encryption.EncryptSimpleData(realSK, editData.Data)
+	encryptedData, err := encryption.EncryptSimpleData(realSK, string(fileJSON))
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gophkeep/internal/auth"
 	"gophkeep/internal/config"
 	"gophkeep/internal/database"
 	"gophkeep/internal/handler"
@@ -28,24 +29,32 @@ func main() {
 
 	cfg := config.MakeConfig()
 
+	ctx := context.Background()
+
 	env := &handler.Env{
 		ConfigStruct: cfg,
-		Storage:      database.NewDB(cfg.FlagDBConnectionAddress),
+		Storage:      database.NewDB(ctx, cfg.FlagDBConnectionAddress),
+		UserID:       "",
 	}
 
 	defer env.Storage.Close()
 
 	r := chi.NewRouter()
 	r.Use(logger.LoggingMiddleware)
+	r.Use(auth.CookieMiddleware)
 
 	r.Get(`/ping`, env.PingDBHandle)
-	r.Get(`/api/user/list`, env.ListHandle)
+	r.Get(`/api/user/sync`, env.SyncHandle)
+	r.Get("/api/read", env.ReadHandle)
+	r.Get("/api/readfile", env.ReadFileHandle)
 
 	r.Post("/api/user/register", env.RegisterHandle)
 	r.Post("/api/user/login", env.AuthHandle)
+	r.Post("/api/keepfile", env.KeepFileHandle)
 	r.Post("/api/keep", env.KeepHandle)
 	r.Post("/api/delete", env.DeleteHandle)
 	r.Post("/api/edit", env.EditHandle)
+	r.Post("/api/editfile", env.EditFileHandle)
 
 	sugar.Infow(
 		"Starting server",

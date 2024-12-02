@@ -1,4 +1,4 @@
-package cardssmigrations
+package cardsmigrations
 
 import "embed"
 

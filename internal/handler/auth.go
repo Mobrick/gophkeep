@@ -10,12 +10,6 @@ import (
 )
 
 func (env Env) AuthHandle(res http.ResponseWriter, req *http.Request) {
-
-	if _, ok := auth.CookieIsValid(req); ok {
-		res.WriteHeader(http.StatusOK)
-		return
-	}
-
 	ctx := req.Context()
 
 	var loginData model.SimpleAccountData
